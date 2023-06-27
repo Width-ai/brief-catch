@@ -1,0 +1,8 @@
+version: '3'
+services:
+  next_word_prob:
+    build:
+      context: .
+      dockerfile: Dockerfile.next-word
+    ports:
+      - 8000:8000
