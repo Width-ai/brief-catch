@@ -1,12 +1,20 @@
+import openai
+import os
+
+from dotenv import load_dotenv
 from fastapi import FastAPI, Form
 from fastapi.responses import JSONResponse
 from src.models.gpt3 import call_gpt3
 
+load_dotenv()
+
+openai.api_key = os.getenv("OPENAI_API_KEY")
+
 app = FastAPI()
 
 
-@app.post("/generate")
-def generate(prompt: str = Form(example="Hello, nice to meet you!"),
+@app.post("/generate-next-word")
+def generate_next_word(prompt: str = Form(example="Hello, nice to meet you!"),
              temperature: float = Form(0),
              model: str = Form("text-davinci-003")):
     """
