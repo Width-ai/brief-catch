@@ -1,0 +1,101 @@
+1384. 4
+603. 3
+604. 3
+605. 4
+951. 4
+952. 1 - The revision made the original worse by changing "centered" to "revolved," which is less accurate in this context.
+1120. 4
+1121. 3
+1531. 3
+1532. 3
+2528. 3
+2529. 3
+6495. 3
+6496. 3
+98413. 3
+945. 4
+946. 4
+947. 4
+5848. 4
+5936. 4
+6242. 4
+6338. 4
+11550. 3
+8876. 5 - The revision corrects a grammatical error, changing "on" to "to" for more accurate language.
+8877. 3
+8878. 3
+8966. 5 - The revision is more accurate, correcting the preposition "on" to "to" for proper grammar and clarity.
+8967. 4
+8968. 3
+2543. 3
+8273. 4
+1105. 3
+398. 3
+1131. 3
+2233. 3
+3292. 3
+3989. 3
+4071. 4
+4287. 3
+5927. 3
+6552. 3
+6649. 3
+7959. 3
+9439. 3
+11515. 3
+11594. 3
+11681. 3
+16377. 1 - The revision is identical to the original, hence no improvement.
+3588. 3
+3589. 1 - The revision made the original sentence less accurate. The term "demonstrating" is more appropriate in this context than "conferring" as it refers to proving or showing something, while "conferring" implies giving or bestowing something.
+3794. 3
+3795. 1 - The revision changes the meaning of the sentence. In the original, Laroe is demonstrating (proving) their standing, while in the revision, they are conferring (granting) it, which is not the same.
+5507. 4
+5508. 3
+5665. 3
+5666. 3
+6220. 3
+30. 3
+368. 3
+1825. 3
+3473. 3
+6896. 3
+7870. 3
+7983. 3
+8021. 3
+8167. 3
+8295. 3
+1362. 5 - The revision corrects the spelling of "preventative" to "preventive," making it more accurate.
+2567. 3
+3652. 3
+47. 1 - The revision changes the verb tense incorrectly, making the sentence less accurate.
+223. 1 - The revision incorrectly changes "was" to "were", making the sentence grammatically incorrect.
+263. 1 - The revision changes the verb tense incorrectly, making the sentence less accurate.
+354. 3
+413. 4
+458. 5 - The revision is more accurate in its use of the subjunctive mood, which is appropriate for hypothetical situations.
+550. 5 - The revision is more grammatically accurate.
+567. 5 - The revision is more accurate, using the subjunctive mood correctly for hypothetical situations.
+1036. 1 - The revision made the sentence grammatically incorrect by changing "was" to "were".
+1128. 3
+1277. 3
+1302. 1 - The revision made the sentence grammatically incorrect by changing "was" to "were" in the phrase "the safe-port clause were a promise". The original sentence was correct.
+1504. 5 - The revision is more accurate, using the subjunctive mood correctly for hypothetical situations.
+1554. 1 - The revision changes "was" to "were", which makes the sentence grammatically incorrect.
+2083. 3
+2530. 5 - The revision is more accurate, using the correct form of the verb for the hypothetical condition.
+2612. 3
+2636. 3
+2730. 3
+3052. 4
+3092. 3
+3109. 4
+3143. 4
+3323. 3
+3430. 4
+3483. 3
+3772. 1 - The revision made the sentence grammatically incorrect by changing "was" to "were".
+3850. 3
+3957. 3
+3970. 5 - The revision is more accurate, using the subjunctive mood correctly for hypothetical situations.
+4018. 5 - The revision is more grammatically accurate. The use of "were" instead of "was" after "if" in hypothetical situations is correct.
