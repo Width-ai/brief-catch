@@ -14,11 +14,6 @@ def setup_logger():
     # Create a formatter for the log messages
     formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
 
-    # # Create a file handler for the log messages
-    # file_handler = logging.FileHandler('log.log')
-    # file_handler.setLevel(logging.DEBUG)
-    # file_handler.setFormatter(formatter)
-
     # Create a console handler for the log messages
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.INFO)
@@ -43,7 +38,7 @@ def generate_simple_message(system_prompt: str, user_prompt: str) -> List[dict]:
     ]
 
 
-@backoff.on_exception(backoff.expo, openai.error.OpenAIError)
+@backoff.on_exception(backoff.expo, openai.error.OpenAIError, logger=setup_logger())
 def call_gpt4_with_backoff(messages: List, temperature: float = 0.7, max_length: int = 256) -> str:
     """
     Generic function to call GPT4 with specified messages
