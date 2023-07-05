@@ -1,3 +1,4 @@
+import csv
 import os
 import openai
 import pandas as pd
@@ -21,15 +22,21 @@ logger = setup_logger()
 # set openai key
 openai.api_key = os.getenv('OPENAI_API_KEY')
 
+write_lock = Lock()
+
+# constants
 GPT_4_RATE_LIMIT = 40000
 TOKEN_BUFFER_AMOUNT = 3000
 
-write_lock = Lock()
+NUM_PROCESSES = 6
+SLEEP_TIME = 5
+
+INPUT_DATA = "data/sentence_ranking_clean_input_data.csv"
+OUTPUT_DATA = "data/rerun_output_data.csv"
+
 
 def rank_sentences(input_data_tuple: tuple):
     index, row, sleep_time = input_data_tuple
-    if index % 100 == 0:
-        logger.info(f"Current index: {index}")
     try:
         time.sleep(sleep_time)  # Wait for a certain period to avoid hitting rate limit
         sentence_data = '\t'.join(row.astype(str))
@@ -41,12 +48,16 @@ def rank_sentences(input_data_tuple: tuple):
         # if length of messages is more than token limit
         if num_tokens_from_string(string=SENTENCE_RANKING_SYSTEM_PROMPT + sentence_data) < GPT_4_RATE_LIMIT - TOKEN_BUFFER_AMOUNT:
             response = call_gpt4_with_backoff(messages=messages, temperature=0)
-            
+
+            # split the response on the first comma
+            response_parts = response.split(",", 1)
+
             # write results to file immediately
             with write_lock:
-                with open('data/output_rest_of_data.txt', 'a') as f:
-                    f.write(response + "\n")
-
+                with open(OUTPUT_DATA, 'a', newline='') as file:
+                    writer = csv.writer(file)
+                    # add index, sentence #, text, corrected text, and second group of split response
+                    writer.writerow([index, row['sentence #'], row['text'], row['corrected'], response_parts[1].strip()])
     except Exception as e:
         logger.error(f"Error ranking sentence {index}: {e}")
         logger.exception(e)
@@ -71,33 +82,18 @@ def calc_run_cost(input_data: pd.DataFrame) -> tuple[float, int]:
     return cost, tokens
 
 
-def read_numbers(file_name):
-    numbers = []
-    with open(file_name, 'r') as file:
-        lines = file.readlines()
-        for line in lines:
-            match = re.search(r'(\d+)\.', line)
-            if match:
-                numbers.append(int(match.group(1)))
-    return numbers
-
-
 def main():
     # read in data
-    df = pd.read_csv('data/sentence_ranking_clean_input_data.csv')
-    df = df.reset_index(drop=True)
-
-    NUM_RECORDS = -5000
-    NUM_PROCESSES = 6
-    SLEEP_TIME = 5
-
-    # filter out data
-    # df = df.head(NUM_RECORDS)
-    df = df[~df['sentence #'].isin(read_numbers('data/output_rest_of_data.txt'))]
+    df = pd.read_csv(INPUT_DATA)
+    # pick up where we left off
+    output_df = pd.read_csv(OUTPUT_DATA, quotechar='"', delimiter = ",", index_col=0)
+    restart_df = df.drop(index=output_df.index)
+    sentence_number_df = pd.read_csv('data/rerun_sentence_numbers.csv')
+    df = restart_df[restart_df['sentence #'].isin(sentence_number_df['sentence #'].to_list())]
 
     # run a cost analysis and check for approval
     cost_estimate, token_estimate = calc_run_cost(input_data=df)
-    approval = input(f"Estimated cost: ${cost_estimate}\nEstimated tokens: {token_estimate}\nContinue? [Y/n]:")
+    approval = input(f"Number of records: {len(df.index)}\nEstimated cost: ${cost_estimate}\nEstimated tokens: {token_estimate}\nContinue? [Y/n]:")
 
     if approval == 'Y':
         # rank the sentences

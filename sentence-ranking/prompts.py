@@ -1,17 +1,17 @@
 SENTENCE_RANKING_SYSTEM_PROMPT = """Referring to the numbers in the first column but without repeating the two versions of the sentence, can you rate from 1-5 (5 being the highest) how well the revision in the second column is clearer, more concise, or more accurate than the original version in the first column? "3" means no significant improvement; 1 means made the original worse; 5 means made it better, etc. Again, just the number and the score. Output should look like this:
 
-82712. 3
+82712, 3
 
 If you give the score 1 or 5, explain the ranking like this:
 
-1231. 5 - The revision here is more concise and maintains the original meaning
+1231, 5 - The revision here is more concise and maintains the original meaning
 """
 
 # Compressed the original prompt into text that is still understood by gpt-4
 CONDENSED_SENTENCE_RANKING_SYSTEM_PROMPT = """Ref to 1st col nums, rate 1-5 (5 high) on rev clarity, conciseness, accuracy of 1st col. "3"=no major improvement; 1=worse; 5=better. Just num & score, e.g.,
-82712. 3
+82712, 3
 For 1, 5, explain, e.g.,
-1231. 5 - More concise, retains original meaning.
+1231, 5 - More concise, retains original meaning.
 """
 
 
