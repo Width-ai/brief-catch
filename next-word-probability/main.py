@@ -24,7 +24,7 @@ def generate_next_word(input_sentence: str = Form(example="Hello, nice to meet y
     Generate the next possible words with the log probabilities.
     """
     try:
-        response = call_gpt3(input_sentence, model=model, temperature=temperature)
+        response = call_gpt3(input_sentence.strip(), model=model, temperature=temperature)
         return JSONResponse(content={"likely_words": response})
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
