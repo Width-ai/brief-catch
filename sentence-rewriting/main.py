@@ -1,14 +1,15 @@
+import json
 import openai
 import os
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
-from domain.constants import TOPIC_SENTENCE_SYSTEM_PROMPT, QUOTATION_SYSTEM_PROMPT
+from domain.prompts import TOPIC_SENTENCE_SYSTEM_PROMPT, QUOTATION_SYSTEM_PROMPT
 from domain.models import InputData
 from utils.utils import generate_simple_message, call_gpt_with_backoff, setup_logger
 
-logger = setup_logger()
+logger = setup_logger(__name__)
 
 load_dotenv()
 
@@ -27,10 +28,13 @@ def topic_sentence(input_data: InputData):
             system_prompt=TOPIC_SENTENCE_SYSTEM_PROMPT,
             user_prompt=input_data.input_text
         )
-        response = call_gpt_with_backoff(messages=messages, model="gpt-3.5-turbo-16k", temperature=0)
-        if response.lower().replace(".", "") == "no changes":
-            response = input_data.input_text
-        return JSONResponse(content={"response": response})
+        response = call_gpt_with_backoff(messages=messages, model="gpt-4", temperature=0)
+        logger.info(f"response from topic sentence analysis: {response}")
+        json_response = json.loads(response)
+        if json_response["revised_topic_sentence"].lower().replace(".", "") == "no changes":
+            logger.info("original sentence didn't need changes, replacing value in output...")
+            json_response["revised_topic_sentence"] = input_data.input_text
+        return JSONResponse(content=json_response)
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 

@@ -1,4 +1,5 @@
 version: '3'
+
 services:
   next_word_prob:
     build:
@@ -6,3 +7,10 @@ services:
       dockerfile: Dockerfile.next-word
     ports:
       - 8000:8000
+  
+  sentence_rewriting:
+    build:
+      context: .
+      dockerfile: Dockerfile.sentence-rewriting
+    ports:
+      - 8001:8001
