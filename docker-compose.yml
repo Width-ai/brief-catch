@@ -1,16 +1,10 @@
 version: '3'
 
 services:
-  next_word_prob:
+  api_service:
     build:
       context: .
-      dockerfile: Dockerfile.next-word
+      dockerfile: Dockerfile.api-service
+    restart: always
     ports:
-      - 8000:8000
-  
-  sentence_rewriting:
-    build:
-      context: .
-      dockerfile: Dockerfile.sentence-rewriting
-    ports:
-      - 8001:8001
+      - "8000:8000"
