@@ -9,7 +9,7 @@ services:
     ports:
       - "8000:8000"
   
-  api_service:
+  ui_service:
     build:
       context: .
       dockerfile: Dockerfile.ui-service
