@@ -1,0 +1,5 @@
+requests
+streamlit
+pandas
+python-dotenv==1.0.0
+streamlit-chat==0.1.1
