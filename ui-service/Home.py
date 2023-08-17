@@ -1,8 +1,7 @@
-import json
 import os
-import pandas as pd
 import requests
 import streamlit as st
+import toml
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -10,41 +9,61 @@ API_URL = os.getenv("API_SERVICE_URL", "http://localhost:8000")
 
 st.set_page_config(page_title="Brief Catch Test UI", page_icon="📝")
 hide_default_format = """
-       <style>
-       #MainMenu {visibility: hidden; }
-       footer {visibility: hidden;}
-       </style>
-       """
+<style>
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+</style>
+"""
 st.markdown(hide_default_format, unsafe_allow_html=True)
 
-st.title("Text Rewriting")
+primaryColor = toml.load(".streamlit/config.toml")['theme']['primaryColor']
+s = f"""
+<style>
+div.stButton > button:first-child {{ background-color: {primaryColor}; border-radius: 5px; color: #fff;}}
+<style>
+"""
+st.markdown(s, unsafe_allow_html=True)
+
+
+
+st.markdown("# ContentCatch")
 st.divider()
 
 # Endpoint 1
-st.subheader("**/topic-sentence Endpoint**")
-topic_sentence_text = st.text_input("Input String for /topic-sentence endpoint")
-if st.button("Call /topic-sentence Endpoint"):
-    with st.spinner("Calling /topic-sentence..."):
+st.markdown("## ParagraphCatch")
+topic_sentence_text = st.text_input("Share a Paragraph!")
+if st.button("Call ParagraphCatch"):
+    with st.spinner("Calling ParagraphCatch..."):
         response = requests.post(f"{API_URL}/topic-sentence", 
                                  json={"input_text": topic_sentence_text})
-        st.write("Response:", response.json())
+        paragraph_catch_response = response.json()
+        st.write("ParagraphCaught!")
+        st.markdown(f"### New Paragraph Opener:\n{paragraph_catch_response['revised_topic_sentence']}")
+        st.markdown(f"### BriefCaught Thoughts:\n{paragraph_catch_response['analysis']}")
 st.divider()
 
 # Endpoint 2
-st.subheader("**/quotations Endpoint**")
-quotations_text = st.text_input("Input String for /quotations endpoint")
-if st.button("Call /quotations Endpoint"):
-    with st.spinner("Calling /quotations..."):
+st.markdown("## QuotationCatch")
+quotations_text = st.text_input("Share a Quotation!")
+if st.button("Call QuotationCatch"):
+    with st.spinner("Calling QuotationCatch..."):
         response = requests.post(f"{API_URL}/quotations",
                                  json={"input_text": quotations_text})
-        st.write("Response:", response.json())
+        quotation_catch_response = response.json()
+        st.write("QuotationCaught!")
+        st.markdown(f"### New Quotation Lead-In:\n{quotation_catch_response['response']}")
+
 st.divider()
 
 # Endpoint 3
-st.subheader("**/parentheses-rewriting Endpoint**")
-parentheses_text = st.text_input("Input List of strings for /parentheses-rewriting endpoint")
-if st.button("Call /parentheses-rewriting Endpoint"):
-    with st.spinner("Calling /parentheses-rewriting..."):
+st.markdown("## ParentheticalCatch")
+parentheses_text = st.text_input("Share a Parenthetical!")
+if st.button("Call ParentheticalCatch"):
+    with st.spinner("Calling ParentheticalCatch..."):
         response = requests.post(f"{API_URL}/parentheses-rewriting",
                                  json={"input_texts": parentheses_text.split(",")})
-        st.write("Response:", response.json())
+        parenthetical_catch_response = response.json()
+        st.markdown(f"### New Parenthetical(s):")
+        for pair in parenthetical_catch_response["response"]:
+            st.write(f"**Parenthetical Caught:** {pair['input_text']}")
+            st.write(f"**New Parenthetical:** {pair['output_text']}")
