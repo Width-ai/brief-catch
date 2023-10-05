@@ -40,6 +40,9 @@ if st.button("Call ParagraphCatch"):
         st.write("ParagraphCaught!")
         st.markdown(f"### New Paragraph Opener:\n{paragraph_catch_response['revised_topic_sentence']}")
         st.markdown(f"### BriefCaught Thoughts:\n{paragraph_catch_response['analysis']}")
+        st.markdown(f"Input token count: {paragraph_catch_response['usage']['input_tokens']}")
+        st.markdown(f"Output token count: {paragraph_catch_response['usage']['output_tokens']}")
+        st.markdown(f"Cost: ${paragraph_catch_response['usage']['cost']}")
 st.divider()
 
 # Endpoint 2
@@ -52,6 +55,9 @@ if st.button("Call QuotationCatch"):
         quotation_catch_response = response.json()
         st.write("QuotationCaught!")
         st.markdown(f"### New Quotation Lead-In:\n{quotation_catch_response['response']}")
+        st.markdown(f"Input token count: {quotation_catch_response['usage']['input_tokens']}")
+        st.markdown(f"Output token count: {quotation_catch_response['usage']['output_tokens']}")
+        st.markdown(f"Cost: ${quotation_catch_response['usage']['cost']}")
 
 st.divider()
 
@@ -67,3 +73,6 @@ if st.button("Call ParentheticalCatch"):
         for pair in parenthetical_catch_response["response"]:
             st.write(f"**Parenthetical Caught:** {pair['input_text']}")
             st.write(f"**New Parenthetical:** {pair['output_text']}")
+        st.markdown(f"Input token count: {parenthetical_catch_response['usage']['input_tokens']}")
+        st.markdown(f"Output token count: {parenthetical_catch_response['usage']['output_tokens']}")
+        st.markdown(f"Cost: ${parenthetical_catch_response['usage']['cost']}")
