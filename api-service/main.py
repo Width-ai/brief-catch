@@ -6,9 +6,9 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Form
 from fastapi.responses import JSONResponse
 from domain.prompts import TOPIC_SENTENCE_SYSTEM_PROMPT, QUOTATION_SYSTEM_PROMPT
-from domain.models import InputData, SentenceRankingInput, InputDataList
+from domain.models import InputData, SentenceRankingInput, InputDataList, RuleInputData
 from utils.utils import generate_simple_message, call_gpt_with_backoff, setup_logger, rank_sentence, call_gpt3, \
-    rewrite_parentheses_helper
+    rewrite_parentheses_helper, rewrite_rule_helper
 
 logger = setup_logger(__name__)
 
@@ -105,6 +105,26 @@ def parentheses_rewriting(input_data: InputDataList):
     """
     try:
         response, usage = rewrite_parentheses_helper(input_data=input_data.input_texts)
+        return JSONResponse(content={
+            "response": response,
+            "usage": usage
+        })
+    except Exception as e:
+        logger.error(e)
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
+@app.post("/rule-rewriting")
+def rule_rewriting(input_data: RuleInputData):
+    """
+    Modify an existing rule based on input and output the new version
+    """
+    try:
+        response, usage = rewrite_rule_helper(
+            original_rule=input_data.original_rule_text,
+            action_to_take=input_data.action_to_take,
+            specific_actions=input_data.specific_actions
+        )
         return JSONResponse(content={
             "response": response,
             "usage": usage

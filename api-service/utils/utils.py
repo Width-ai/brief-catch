@@ -6,7 +6,12 @@ import openai
 import tiktoken
 from collections import defaultdict
 from typing import List, Tuple, Dict
-from domain.prompts import SENTENCE_RANKING_SYSTEM_PROMPT, PARENTHESES_REWRITING_PROMPT
+from domain.prompts import (
+    SENTENCE_RANKING_SYSTEM_PROMPT,
+    PARENTHESES_REWRITING_PROMPT,
+    RULE_MODIFYING_SYSTEM_PROMPTS,
+    RULE_USER_TEXT_TEMPLATE
+)
 
 pricing = json.load(open("pricing.json"))
 
@@ -207,3 +212,20 @@ def rewrite_parentheses_helper(input_data: List[str]) -> Tuple[List[dict], Dict]
         for key, value in usage.items():
             total_usage[key] += value
     return output_data, total_usage
+
+
+def rewrite_rule_helper(original_rule: str, action_to_take: str, specific_actions: List[str] = []) -> Union[str, Dict]:
+    """
+    Calls GPT with the corresponding system prompt and the user text formatted
+    """
+    # get correct system prompt
+    action_system_prompt = RULE_MODIFYING_SYSTEM_PROMPTS[action_to_take]
+
+    # format user text
+    user_text = RULE_USER_TEXT_TEMPLATE.replace("{{origininal_rule_text}}", original_rule)
+    user_text = user_text.replace("{{action_to_take}}", action_to_take)
+    user_text = user_text.replace("{{list of specific actions}}", "\n".join(specific_actions))
+    
+    messages = generate_simple_message(system_prompt=action_system_prompt, user_prompt=user_text)
+
+    return call_gpt_with_backoff(messages=messages, temperature=0, max_length=1200)
