@@ -85,19 +85,6 @@ def sentence_ranking(input_data: SentenceRankingInput):
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 
-@app.post("/generate-next-word")
-def generate_next_word(input_sentence: str = Form(example="Hello, nice to meet you!")):
-    """
-    Generate the next possible words with the log probabilities.
-    """
-    try:
-        response, usage = call_gpt3(input_sentence.strip(), model="text-davinci-003", temperature=0)
-        return JSONResponse(content={"likely_words": response, "usage": usage})
-    except Exception as e:
-        logger.error(e)
-        return JSONResponse(content={"error": str(e)}, status_code=500)
-
-
 @app.post("/parentheses-rewriting")
 def parentheses_rewriting(input_data: InputDataList):
     """
@@ -114,6 +101,20 @@ def parentheses_rewriting(input_data: InputDataList):
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 
+@app.post("/generate-next-word")
+def generate_next_word(input_sentence: InputData) -> JSONResponse:
+    """
+    Generate the next possible words with the log probabilities.
+    """
+    try:
+        prompt = f"Generate the most likely word to complete this sentence:\n\n{input_sentence.input_text.strip()}"
+        response, usage = call_gpt3(prompt=prompt, temperature=0)
+        return JSONResponse(content={"likely_words": response, "usage": usage})
+    except Exception as e:
+        logger.error(e)
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
 @app.post("/bulk-generate-next-word")
 async def bulk_generate_next_word(file: UploadFile = File(...)) -> JSONResponse:
     """
@@ -125,7 +126,45 @@ async def bulk_generate_next_word(file: UploadFile = File(...)) -> JSONResponse:
         lines = [line for line in contents.decode('utf-8').split('\n') if line.strip()]
         response_data = []
         for line in lines:
-            response, usage = call_gpt3(line.strip(), model="text-davinci-003", temperature=0)
+            response, usage = call_gpt3(prompt=line.strip(), temperature=0)
+            response_data.append({
+                "input": line,
+                "likely_words": response,
+                "usage": usage
+            })
+        return JSONResponse(content=response_data)
+    except Exception as e:
+        logger.error(e)
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
+@app.post("/generate-prev-word")
+def generate_prev_word(input_data: InputData) -> JSONResponse:
+    """
+    Generate the most likely previous word with the log probabilities
+    """
+    try:
+        prompt = f"Fill in the blank in the sentence below:\n\n____ {input_data.input_text.strip()}\n\n"
+        response, usage = call_gpt3(prompt=prompt, temperature=0, max_tokens=10)
+        return JSONResponse(content={"likely_words": response, "usage": usage})
+    except Exception as e:
+        logger.error(e)
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
+@app.post("/bulk-generate-prev-word")
+async def bulk_generate_prev_word(file: UploadFile = File(...)) -> JSONResponse:
+    """
+    Generates the previous possible words with the log probabilities for a bulk dataset
+    """
+    try:
+        contents = await file.read()
+        # Split the file contents into lines and then into tuples
+        lines = [line for line in contents.decode('utf-8').split('\n') if line.strip()]
+        response_data = []
+        for line in lines:
+            prompt = f"Fill in the blank in the sentence below:\n\n____ {line.strip()}\n\n"
+            response, usage = call_gpt3(prompt=prompt, temperature=0, max_tokens=10)
             response_data.append({
                 "input": line,
                 "likely_words": response,
