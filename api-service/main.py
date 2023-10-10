@@ -3,7 +3,7 @@ import openai
 import os
 from collections import defaultdict
 from dotenv import load_dotenv
-from fastapi import FastAPI, Form
+from fastapi import FastAPI, Form, UploadFile, File
 from fastapi.responses import JSONResponse
 from domain.prompts import TOPIC_SENTENCE_SYSTEM_PROMPT, QUOTATION_SYSTEM_PROMPT
 from domain.models import InputData, SentenceRankingInput, InputDataList, RuleInputData
@@ -109,6 +109,29 @@ def parentheses_rewriting(input_data: InputDataList):
             "response": response,
             "usage": usage
         })
+    except Exception as e:
+        logger.error(e)
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
+@app.post("/bulk-generate-next-word")
+async def bulk_generate_next_word(file: UploadFile = File(...)) -> JSONResponse:
+    """
+    Generates the next possible words with the log probabilities for a bulk dataset
+    """
+    try:
+        contents = await file.read()
+        # Split the file contents into lines and then into tuples
+        lines = [line for line in contents.decode('utf-8').split('\n') if line.strip()]
+        response_data = []
+        for line in lines:
+            response, usage = call_gpt3(line.strip(), model="text-davinci-003", temperature=0)
+            response_data.append({
+                "input": line,
+                "likely_words": response,
+                "usage": usage
+            })
+        return JSONResponse(content=response_data)
     except Exception as e:
         logger.error(e)
         return JSONResponse(content={"error": str(e)}, status_code=500)
