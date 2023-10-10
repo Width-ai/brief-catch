@@ -89,19 +89,17 @@ def convert_log_probs_to_percentage(log_probs: dict) -> dict:
     return percentages
 
 
-def call_gpt3(input_sentence: str, model="text-davinci-003", temperature: float = 0.7, n: int = 1) -> Tuple[
-    List[dict], Dict]:
+def call_gpt3(prompt: str, temperature: float=0.7, max_tokens: int = 2) -> Tuple[List[dict], Dict]:
     """
     Call GPT3 to generate text
     """
-    prompt = f"Generate the most likely word to complete this sentence:\n\n{input_sentence}"
     response = openai.Completion.create(
-        model=model,
+        model="text-davinci-003",
         prompt=prompt,
         temperature=temperature,
-        max_tokens=2,
+        max_tokens=max_tokens,
         top_p=1,
-        n=n,
+        n=1,
         stop=["###"],
         logprobs=5
     )
@@ -114,7 +112,7 @@ def call_gpt3(input_sentence: str, model="text-davinci-003", temperature: float 
         top_probs = response['choices'][0]['logprobs']['top_logprobs']
         for top_prob in top_probs:
             responses.append(convert_log_probs_to_percentage(top_prob))
-    usage["cost"] = compute_cost(usage, model)
+    usage["cost"] = compute_cost(usage, "text-davinci-003")
     return responses, usage
 
 
