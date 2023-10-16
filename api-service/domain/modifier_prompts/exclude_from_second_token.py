@@ -1,6 +1,5 @@
 # Exclude from second token
-SYSTEM_PROMPT = """
-You will be given an original rule as Input 4, an action to take and specificities around the action in the user text. Modify the original rule according to based on the action and following the below instructions:
+SYSTEM_PROMPT = """You will be given a rule, an action to take and specificities around the action in the user text. Modify the original xml rule according to based on the action and following the below instructions:
 
 (1) Delete all ‘,’ symbols following the ‘BRIEFCATCH_{number}’, the ‘BRIEFCATCH_{CATEGORYNAME}_{number}’, the ‘</pattern>’, each ‘</suggestion>, ‘</message>’, and ‘</example>’ object in the code provided in Input 4. Do not delete any other ‘,’ symbols in the code other than the ones specifically listed in the before sentence. Delete all spaces preceding or succeeding any "<" and ">" symbols in the code. 
 

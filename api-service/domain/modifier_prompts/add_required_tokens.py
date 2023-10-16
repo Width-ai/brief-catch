@@ -1,6 +1,5 @@
 # Add required tokens both before and after the string
-SYSTEM_PROMPT = """
-You will be given an original rule as "Input 4", an action to take and specificities around the action as "Input 1" in the user text. Modify the original rule according to the info provided in sections 1 and 2.
+SYSTEM_PROMPT = """You will be given a rule, an action to take and specificities around the action in the user text. Modify the xml rule according to the info provided in sections 1 and 2.
 
 # Section 1:
 

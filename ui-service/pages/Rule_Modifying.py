@@ -38,12 +38,12 @@ action_to_takes = ['Antipattern',
                    'Exclude from final token',
                    'Exclude from second token']
 
-action_to_take = st.selectbox("Action to take:", action_to_takes)
+st.markdown("## Rule Modifying")
 st.divider()
 
 # Endpoint 1
-st.markdown("## ParagraphCatch")
-origin_rule = st.text_area("Origin rule:")
+action_to_take = st.selectbox("Action to take:", action_to_takes)
+origin_rule = st.text_area("Original rule:")
 specific_actions = st.text_area("Specific Actions:")
 if st.button("Modify"):
     with st.spinner("Calling rule rewriting..."):

@@ -1,6 +1,5 @@
 # Add token at end requiring one of these words
-SYSTEM_PROMPT = """
-You will be given a rule, an action to take and specificities around the action in the user text. Modify the xml rule according to the info provided in sections 1 and 2.
+SYSTEM_PROMPT = """You will be given a rule, an action to take and specificities around the action in the user text. Modify the xml rule according to the info provided in sections 1 and 2.
 
 # Section 1:
 Modify the xml according to the specific Actions
