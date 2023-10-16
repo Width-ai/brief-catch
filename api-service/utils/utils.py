@@ -8,10 +8,9 @@ from collections import defaultdict
 from typing import List, Tuple, Dict, Union
 from domain.prompts import (
     SENTENCE_RANKING_SYSTEM_PROMPT,
-    PARENTHESES_REWRITING_PROMPT,
-    RULE_MODIFYING_SYSTEM_PROMPTS,
-    RULE_USER_TEXT_TEMPLATE
+    PARENTHESES_REWRITING_PROMPT
 )
+from domain.modifier_prompts import RULE_MODIFYING_SYSTEM_PROMPTS, RULE_USER_TEXT_TEMPLATE
 
 pricing = json.load(open("pricing.json"))
 
@@ -214,7 +213,7 @@ def rewrite_parentheses_helper(input_data: List[str]) -> Tuple[List[dict], Dict]
     return output_data, total_usage
 
 
-def rewrite_rule_helper(original_rule: str, action_to_take: str, specific_actions: List[str] = []) -> Union[str, Dict]:
+def rewrite_rule_helper(original_rule: str, action_to_take: str, specific_actions: List[str] = []) -> Tuple[str, Dict]:
     """
     Calls GPT with the corresponding system prompt and the user text formatted
     """

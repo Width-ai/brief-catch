@@ -145,7 +145,7 @@ def rule_rewriting(input_data: RuleInputData):
     try:
         response, usage = rewrite_rule_helper(
             original_rule=input_data.original_rule_text,
-            action_to_take=input_data.action_to_take,
+            action_to_take=input_data.action_to_take.value,
             specific_actions=input_data.specific_actions
         )
         return JSONResponse(content={
