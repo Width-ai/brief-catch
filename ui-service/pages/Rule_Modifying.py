@@ -8,9 +8,10 @@ from enum import Enum
 load_dotenv()
 API_URL = os.getenv("API_SERVICE_URL", "http://localhost:8000")
 
-st.set_page_config(page_title="Brief Catch Test rule modifying", page_icon="📝")
+st.set_page_config(page_title="BriefCatch Rule Modifying", page_icon="📝")
 hide_default_format = """
 <style>
+.stDeployButton {visibility: hidden;}
 #MainMenu {visibility: hidden;}
 footer {visibility: hidden;}
 </style>
