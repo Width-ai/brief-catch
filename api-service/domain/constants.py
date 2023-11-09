@@ -1,6 +1,6 @@
 from enum import Enum
 
-class Actions(Enum):
+class Modifications(Enum):
     ANTIPATTERN = 'Antipattern'
     ADD_EXCEPTION_TO_TOKEN = 'Add exception to token'
     CHANGE_FINAL_TOKEN = 'Change final token so it requires one of these words'

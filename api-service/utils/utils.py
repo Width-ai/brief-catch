@@ -1,37 +1,26 @@
 import json
 import backoff
-import logging
 import math
 import openai
+import os
 import tiktoken
+from lxml import etree
 from collections import defaultdict
-from typing import List, Tuple, Dict, Union
+from github import Github
+from typing import List, Tuple, Dict
 from domain.prompts import (
     SENTENCE_RANKING_SYSTEM_PROMPT,
     PARENTHESES_REWRITING_PROMPT
 )
 from domain.modifier_prompts import RULE_MODIFYING_SYSTEM_PROMPTS, RULE_USER_TEXT_TEMPLATE
+from utils.logger import setup_logger
 
 pricing = json.load(open("pricing.json"))
+utils_logger = setup_logger(__name__)
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+GITHUB_REPO = os.getenv("GITHUB_REPO")
 
 
-def setup_logger(name):
-    # Create a logger instance
-    logger = logging.getLogger(name)
-    logger.setLevel(logging.INFO)
-
-    # Create a formatter for the log messages
-    formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
-
-    # Create a console handler for the log messages
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)
-    console_handler.setFormatter(formatter)
-
-    # Add the handlers to the logger
-    # logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
-    return logger
 
 
 def compute_cost(usage: Dict[str, int], model: str) -> float:
@@ -52,7 +41,7 @@ def generate_simple_message(system_prompt: str, user_prompt: str) -> List[dict]:
     ]
 
 
-@backoff.on_exception(backoff.expo, openai.error.OpenAIError, logger=setup_logger(__name__))
+@backoff.on_exception(backoff.expo, openai.error.OpenAIError, logger=utils_logger)
 def call_gpt_with_backoff(messages: List, model: str = "gpt-4", temperature: float = 0.7, max_length: int = 256) -> \
         Tuple[str, Dict]:
     """
@@ -145,8 +134,8 @@ def rank_sentence(sentence_number: str, rule_number: str, text: str, corrected_t
             "usage": usage
         }
     except Exception as e:
-        setup_logger(__name__).error(f"Error ranking sentence: {e}")
-        setup_logger(__name__).exception(e)
+        utils_logger.error(f"Error ranking sentence: {e}")
+        utils_logger.exception(e)
 
 
 def num_tokens_from_string(string: str, model_name: str = "gpt-4") -> int:
@@ -213,18 +202,69 @@ def rewrite_parentheses_helper(input_data: List[str]) -> Tuple[List[dict], Dict]
     return output_data, total_usage
 
 
-def rewrite_rule_helper(original_rule: str, action_to_take: str, specific_actions: List[str] = []) -> Tuple[str, Dict]:
+def parse_rules_from_xml(xml_content: str) -> Dict:
+    """
+    Parse rules from XML content and store them in a dictionary.
+    :param xml_content: str - The content of the XML file
+    :return: dict - A dictionary with rule names as keys and full rules as values
+    """
+    # Parse the XML content
+    # TODO: the source file needs to include these
+    dtd = """
+    <!DOCTYPE root [
+    <!ENTITY months "January|February|March|April|May|June|July|August|September|October|November|December">
+    <!ENTITY abbrevMonths "Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec">
+    ]>
+    """
+    wrapped_xml_content = f"{dtd}<root>{xml_content}</root>"
+
+    parser = etree.XMLParser(resolve_entities=True)
+    root = etree.fromstring(wrapped_xml_content.encode('utf-8'), parser=parser)
+
+    rules_dict = {}
+
+    for rule in root.xpath('.//rule'):
+        rule_name = rule.get('name')
+        rule_str = etree.tostring(rule, encoding='unicode', pretty_print=True)
+        rules_dict[rule_name] = rule_str
+
+    return rules_dict
+
+
+def pull_xml_from_github() -> Dict:
+    """
+    Pull a specified file from a private GitHub repository.
+    :param token: str - Your personal GitHub access token
+    :param repo_name: str - Full name of the repository (e.g., "username/repo")
+    :param file_path: str - Path to the XML file within the repository (e.g., "path/to/grammar.xml")
+    :return: dict - The rules with the name as the key and the rule as the value
+    """
+    g = Github(GITHUB_TOKEN)
+
+    try:
+        repo = g.get_repo(GITHUB_REPO)
+        file_content = repo.get_contents("grammar.xml")
+        xml_content = file_content.decoded_content.decode('utf-8')
+        rules_dict = parse_rules_from_xml(xml_content)
+        return rules_dict
+    except Exception as e:
+        utils_logger.error(f"An error occurred: {e}")
+        utils_logger.exception(e)
+        return None
+
+
+def rewrite_rule_helper(original_rule: str, selected_modification: str, specific_actions: List[str] = []) -> Tuple[str, Dict]:
     """
     Calls GPT with the corresponding system prompt and the user text formatted
     """
     # get correct system prompt
-    action_system_prompt = RULE_MODIFYING_SYSTEM_PROMPTS[action_to_take]
+    action_system_prompt = RULE_MODIFYING_SYSTEM_PROMPTS[selected_modification]
 
     # format user text
     user_text = RULE_USER_TEXT_TEMPLATE.replace("{{origininal_rule_text}}", original_rule)
-    user_text = user_text.replace("{{action_to_take}}", action_to_take)
+    user_text = user_text.replace("{{action_to_take}}", selected_modification)
     user_text = user_text.replace("{{list of specific actions}}", "\n".join(specific_actions))
     
     messages = generate_simple_message(system_prompt=action_system_prompt, user_prompt=user_text)
 
-    return call_gpt_with_backoff(messages=messages, temperature=0, max_length=1200)
+    return call_gpt_with_backoff(messages=messages, model="gpt-4-1106-preview", temperature=0, max_length=1200)

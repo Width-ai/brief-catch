@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from typing import List, Optional
-from domain.constants import Actions
+from domain.constants import Modifications
 
 
 class InputData(BaseModel):
@@ -23,6 +23,6 @@ class SentenceRankingInput(BaseModel):
 
 
 class RuleInputData(BaseModel):
-    action_to_take: Actions
+    selected_modification: Modifications
     specific_actions: List[str]
     original_rule_text: Optional[str] = None

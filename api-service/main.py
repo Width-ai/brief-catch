@@ -1,18 +1,20 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 import json
 import openai
 import os
 from collections import defaultdict
-from dotenv import load_dotenv
 from fastapi import FastAPI, Form, UploadFile, File
 from fastapi.responses import JSONResponse
 from domain.prompts import TOPIC_SENTENCE_SYSTEM_PROMPT, QUOTATION_SYSTEM_PROMPT
 from domain.models import InputData, SentenceRankingInput, InputDataList, RuleInputData
 from utils.utils import generate_simple_message, call_gpt_with_backoff, setup_logger, rank_sentence, call_gpt3, \
-    rewrite_parentheses_helper, rewrite_rule_helper
+    rewrite_parentheses_helper, rewrite_rule_helper, pull_xml_from_github
 
 logger = setup_logger(__name__)
 
-load_dotenv()
+
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
@@ -137,6 +139,15 @@ async def bulk_generate_next_word(file: UploadFile = File(...)) -> JSONResponse:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 
+@app.get("/list-rules")
+async def list_rules() -> JSONResponse:
+    try:
+        return JSONResponse(content={"rules": pull_xml_from_github()})
+    except Exception as e:
+        logger.error(e)
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
 @app.post("/rule-rewriting")
 def rule_rewriting(input_data: RuleInputData):
     """
@@ -145,7 +156,7 @@ def rule_rewriting(input_data: RuleInputData):
     try:
         response, usage = rewrite_rule_helper(
             original_rule=input_data.original_rule_text,
-            action_to_take=input_data.action_to_take.value,
+            selected_modification=input_data.selected_modification.value,
             specific_actions=input_data.specific_actions
         )
         return JSONResponse(content={

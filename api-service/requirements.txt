@@ -5,3 +5,5 @@ python-dotenv==1.0.0
 tiktoken==0.4.0
 uvicorn~=0.18.3
 python-multipart
+PyGithub==2.1.1
+lxml==4.9.3
