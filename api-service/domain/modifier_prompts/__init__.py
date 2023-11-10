@@ -37,6 +37,6 @@ RULE_USER_TEXT_TEMPLATE = """# Original Rule:
 {{action_to_take}}
 
 Specific Modifications:
-{{list of specific Modifications}}
+{{list of specific modifications}}
 
 # Modified Rule:"""

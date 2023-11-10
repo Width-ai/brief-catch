@@ -6,7 +6,7 @@ import os
 import tiktoken
 from lxml import etree
 from collections import defaultdict
-from github import Github
+from github import Github, Repository
 from typing import List, Tuple, Dict
 from domain.prompts import (
     SENTENCE_RANKING_SYSTEM_PROMPT,
@@ -19,6 +19,7 @@ pricing = json.load(open("pricing.json"))
 utils_logger = setup_logger(__name__)
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 GITHUB_REPO = os.getenv("GITHUB_REPO")
+FILENAME = os.getenv("RULE_FILENAME", "grammar.xml")
 
 
 
@@ -226,7 +227,7 @@ def parse_rules_from_xml(xml_content: str) -> Dict:
     for rule in root.xpath('.//rule'):
         rule_name = rule.get('name')
         rule_str = etree.tostring(rule, encoding='unicode', pretty_print=True)
-        rules_dict[rule_name] = rule_str
+        rules_dict[rule_name] = rule_str.rstrip()
 
     return rules_dict
 
@@ -243,7 +244,7 @@ def pull_xml_from_github() -> Dict:
 
     try:
         repo = g.get_repo(GITHUB_REPO)
-        file_content = repo.get_contents("grammar.xml")
+        file_content = repo.get_contents(FILENAME)
         xml_content = file_content.decoded_content.decode('utf-8')
         rules_dict = parse_rules_from_xml(xml_content)
         return rules_dict
@@ -263,8 +264,59 @@ def rewrite_rule_helper(original_rule: str, selected_modification: str, specific
     # format user text
     user_text = RULE_USER_TEXT_TEMPLATE.replace("{{origininal_rule_text}}", original_rule)
     user_text = user_text.replace("{{action_to_take}}", selected_modification)
-    user_text = user_text.replace("{{list of specific actions}}", "\n".join(specific_actions))
+    user_text = user_text.replace("{{list of specific modifications}}", "\n".join(specific_actions))
     
     messages = generate_simple_message(system_prompt=action_system_prompt, user_prompt=user_text)
 
     return call_gpt_with_backoff(messages=messages, model="gpt-4-1106-preview", temperature=0, max_length=1200)
+
+
+def create_new_branch(repo: Repository, branch_name: str):
+    """
+    Tries to create a branch, if it already exists logs a warning
+    """
+    try:
+        main_branch_ref = repo.get_git_ref('heads/main')
+        repo.create_git_ref(ref='refs/heads/' + branch_name, sha=main_branch_ref.object.sha)
+    except Exception as e:
+        utils_logger.warning("Branch with same name likely exists...")
+        utils_logger.exception(e)
+
+
+
+def update_rule_helper(modified_rule_name: str, modified_rule: str) -> str:
+    """
+    Updates a rule in the grammar.xml file and creates a pull request
+    """
+    g = Github(GITHUB_TOKEN)
+
+    try:
+        repo = g.get_repo(GITHUB_REPO)
+        file_content = repo.get_contents(FILENAME)
+        xml_content = file_content.decoded_content.decode('utf-8')
+        rules_dict = parse_rules_from_xml(xml_content)
+        
+        # update the rule
+        rules_dict[modified_rule_name] = modified_rule
+        new_rule_file = "\n".join(rules_dict.values())
+
+        BRANCH_NAME = f"update_rule/{modified_rule_name}"
+        create_new_branch(repo=repo, branch_name=BRANCH_NAME)
+        update_file = repo.update_file(
+            path=FILENAME, 
+            message=f"Update {modified_rule_name}",
+            content=new_rule_file,
+            sha=file_content.sha, 
+            branch=BRANCH_NAME
+        )
+
+        pr_title = f"Update {modified_rule_name}"
+        pr_body = f"This is an automatically generated PR to update {modified_rule_name}"
+        pr_base = "main"
+        pull_request = repo.create_pull(title=pr_title, body=pr_body, head=BRANCH_NAME, base=pr_base)
+
+        return pull_request.html_url
+    except Exception as e:
+        utils_logger.error(f"An error occurred: {e}")
+        utils_logger.exception(e)
+        return None

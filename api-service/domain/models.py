@@ -26,3 +26,8 @@ class RuleInputData(BaseModel):
     selected_modification: Modifications
     specific_actions: List[str]
     original_rule_text: Optional[str] = None
+
+
+class UpdateRuleInput(BaseModel):
+    modified_rule_name: str
+    modified_rule: str

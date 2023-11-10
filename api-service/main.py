@@ -8,9 +8,9 @@ from collections import defaultdict
 from fastapi import FastAPI, Form, UploadFile, File
 from fastapi.responses import JSONResponse
 from domain.prompts import TOPIC_SENTENCE_SYSTEM_PROMPT, QUOTATION_SYSTEM_PROMPT
-from domain.models import InputData, SentenceRankingInput, InputDataList, RuleInputData
+from domain.models import InputData, SentenceRankingInput, InputDataList, RuleInputData, UpdateRuleInput
 from utils.utils import generate_simple_message, call_gpt_with_backoff, setup_logger, rank_sentence, call_gpt3, \
-    rewrite_parentheses_helper, rewrite_rule_helper, pull_xml_from_github
+    rewrite_parentheses_helper, rewrite_rule_helper, pull_xml_from_github, update_rule_helper
 
 logger = setup_logger(__name__)
 
@@ -149,7 +149,7 @@ async def list_rules() -> JSONResponse:
 
 
 @app.post("/rule-rewriting")
-def rule_rewriting(input_data: RuleInputData):
+def rule_rewriting(input_data: RuleInputData) -> JSONResponse:
     """
     Modify an existing rule based on input and output the new version
     """
@@ -162,6 +162,23 @@ def rule_rewriting(input_data: RuleInputData):
         return JSONResponse(content={
             "response": response,
             "usage": usage
+        })
+    except Exception as e:
+        logger.error(e)
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
+@app.post("/update-rule")
+async def update_rule(input_data: UpdateRuleInput) -> JSONResponse:
+    """
+    Update the rule in the repo and create a PR. Returns a link to the PR
+    """
+    try:
+        return JSONResponse(content={
+            "pull_request_link": update_rule_helper(
+                modified_rule_name=input_data.modified_rule_name,
+                modified_rule=input_data.modified_rule
+            )
         })
     except Exception as e:
         logger.error(e)
