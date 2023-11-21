@@ -4,13 +4,14 @@ load_dotenv()
 import json
 import openai
 import os
+import random
 from collections import defaultdict
 from fastapi import FastAPI, Form, UploadFile, File
 from fastapi.responses import JSONResponse
 from domain.prompts import TOPIC_SENTENCE_SYSTEM_PROMPT, QUOTATION_SYSTEM_PROMPT
-from domain.models import InputData, SentenceRankingInput, InputDataList, RuleInputData, UpdateRuleInput
+from domain.models import InputData, SentenceRankingInput, InputDataList, RuleInputData, UpdateRuleInput, CreateRuleInput
 from utils.utils import generate_simple_message, call_gpt_with_backoff, setup_logger, rank_sentence, call_gpt3, \
-    rewrite_parentheses_helper, rewrite_rule_helper, pull_xml_from_github, update_rule_helper
+    rewrite_parentheses_helper, rewrite_rule_helper, pull_xml_from_github, update_rule_helper, create_rule_helper
 
 logger = setup_logger(__name__)
 
@@ -183,3 +184,30 @@ async def update_rule(input_data: UpdateRuleInput) -> JSONResponse:
     except Exception as e:
         logger.error(e)
         return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
+@app.post("/create-rule")
+async def create_rule(input_data: CreateRuleInput) -> JSONResponse:
+    """
+    Create a rule based on given input, returns the new rule and the usage
+    """
+    try:
+        response, usage = create_rule_helper(
+            ad_hoc_syntax=input_data.ad_hoc_syntax,
+            rule_number=input_data.rule_number,
+            correction=input_data.correction,
+            category=input_data.category,
+            explanation=input_data.explanation,
+            test_sentence=input_data.test_sentence,
+            test_sentence_correction=input_data.test_sentence_correction,
+        )
+        new_id = ''.join(str(random.randint(0, 9)) for _ in range(40))
+        response = response.replace("{new_rule_id}", f"BRIEFCATCH_{new_id}")
+        return JSONResponse(content={
+            "response": response,
+            "usage": usage
+        })
+    except Exception as e:
+        logger.error(e)
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+    

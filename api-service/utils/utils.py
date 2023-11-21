@@ -10,7 +10,8 @@ from github import Github, Repository
 from typing import List, Tuple, Dict
 from domain.prompts import (
     SENTENCE_RANKING_SYSTEM_PROMPT,
-    PARENTHESES_REWRITING_PROMPT
+    PARENTHESES_REWRITING_PROMPT,
+    CREATE_RULE_FROM_ADHOC_SYSTEM_PROMPT
 )
 from domain.modifier_prompts import RULE_MODIFYING_SYSTEM_PROMPTS, RULE_USER_TEXT_TEMPLATE
 from utils.logger import setup_logger
@@ -43,8 +44,7 @@ def generate_simple_message(system_prompt: str, user_prompt: str) -> List[dict]:
 
 
 @backoff.on_exception(backoff.expo, openai.error.OpenAIError, logger=utils_logger)
-def call_gpt_with_backoff(messages: List, model: str = "gpt-4", temperature: float = 0.7, max_length: int = 256) -> \
-        Tuple[str, Dict]:
+def call_gpt_with_backoff(messages: List, model: str = "gpt-4", temperature: float = 0.7, max_length: int = 256) -> Tuple[str, Dict]:
     """
     Generic function to call GPT4 with specified messages
     """
@@ -320,3 +320,35 @@ def update_rule_helper(modified_rule_name: str, modified_rule: str) -> str:
         utils_logger.error(f"An error occurred: {e}")
         utils_logger.exception(e)
         return None
+
+
+def create_rule_helper(
+        ad_hoc_syntax: str,
+        rule_number: str,
+        correction: str,
+        category: str,
+        explanation: str,
+        test_sentence: str,
+        test_sentence_correction: str) -> Tuple[str, Dict]:
+    """
+    Creates a new rule based on the provided input
+    """
+    user_text = f"""Ad Hoc:
+{ad_hoc_syntax}
+Rule Number:
+{rule_number}
+Correction:
+{correction}
+Category:
+{category}
+Explanation:
+{explanation}
+Test Sentence:
+{test_sentence}
+Corrected Test Sentence:
+{test_sentence_correction}
+
+XML Rule:"""
+    messages = generate_simple_message(system_prompt=CREATE_RULE_FROM_ADHOC_SYSTEM_PROMPT, user_prompt=user_text)
+
+    return call_gpt_with_backoff(messages=messages, model="gpt-4-1106-preview", temperature=0, max_length=1200)

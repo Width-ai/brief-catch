@@ -121,8 +121,54 @@ def comment_out_element(xml_string: str, parent_type: str, parent_index: int, ch
 modification_action = st.selectbox("Action to take:", actions)
 if modification_action == "Create":
     st.session_state['modified'] = False
-    st.session_state['modified_rule'] = None
-    st.write("Create form")
+    st.session_state['new_rule'] = None
+    st.write("Create Form")
+
+    # Define the form fields
+    with st.form(key='create_rule_form'):
+        ad_hoc_syntax = st.text_input("Ad Hoc Syntax")
+        rule_number = st.text_input("Rule Number")
+        correction = st.text_input("Correction")
+        category = st.text_input("Category")
+        explanation = st.text_area("Explanation")
+        test_sentence = st.text_input("Test Sentence")
+        test_sentence_correction = st.text_input("Test Sentence Correction")
+
+        # Form submission button
+        submit_button = st.form_submit_button(label='Submit Rule')
+
+    # If the form is submitted, send the data to the API endpoint
+    if submit_button:
+        # Create the JSON object with the correct fields
+        json_data = {
+            "ad_hoc_syntax": ad_hoc_syntax,
+            "rule_number": rule_number,
+            "correction": correction,
+            "category": category,
+            "explanation": explanation,
+            "test_sentence": test_sentence,
+            "test_sentence_correction": test_sentence_correction
+        }
+
+        # Use st.spinner to indicate loading while waiting for the request to resolve
+        with st.spinner('Creating rule... Please wait.'):
+            try:
+                response = requests.post(f"{API_URL}/create-rule", json=json_data)
+                if response.status_code == 200:
+                    json_response = response.json()
+                    st.session_state['modified'] = True
+                    st.session_state['new_rule'] = json_response["response"]
+                    st.session_state['usage'] = json_response['usage']
+                    st.write("Modified Rule:")
+                    st.code(st.session_state['new_rule'], language="xml-doc")
+                    st.markdown(f"Input token count: {st.session_state['usage']['input_tokens']}")
+                    st.markdown(f"Output token count: {st.session_state['usage']['output_tokens']}")
+                    st.markdown(f"Cost: {st.session_state['usage']['cost']}")
+                else:
+                    st.error(f"Failed to create rule. Status code: {response.status_code}")
+                    st.error(f"Response body: {response.text}")
+            except requests.exceptions.RequestException as e:
+                st.error(f"An error occurred: {e}")
 elif modification_action == "Disable":
     # Initialize session state variables if they don't already exist
     if 'rule_to_modify' not in st.session_state:

@@ -31,3 +31,13 @@ class RuleInputData(BaseModel):
 class UpdateRuleInput(BaseModel):
     modified_rule_name: str
     modified_rule: str
+
+
+class CreateRuleInput(BaseModel):
+    ad_hoc_syntax: str
+    rule_number: str
+    correction: str
+    category: str
+    explanation: str
+    test_sentence: str
+    test_sentence_correction: str
