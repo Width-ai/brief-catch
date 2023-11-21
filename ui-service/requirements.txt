@@ -3,3 +3,4 @@ streamlit
 pandas
 python-dotenv==1.0.0
 streamlit-chat==0.1.1
+lxml==4.9.3
