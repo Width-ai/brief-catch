@@ -198,7 +198,74 @@ XML Rule:
 
 ###
 
-Note: how in the above examples in the rules, the markers surround the text being replaced. This is vital for the examples.
+Ad Hoc:
+the aim of DT ( NN NN:U NN:UN !analysis !council !game !present !project !research !study !work ) is to VB
+Rule Number:
+30117
+Correction:
+$3 $4 seeks $6 $7
+Category:
+Conciseness
+Explanation:
+Would using fewer words help tighten the sentence?<linebreak/><linebreak/><b>Example</b> from Justice Stevens: “The holder class action that respondent <b>tried to plead</b> . . . is distinguishable from a typical Rule 10b–5 class action in only one respect[.]”<linebreak/><linebreak/><b>Example</b> from Eric Holder: “Now, more than a decade later, [Plaintiffs] <b>seek to hold</b> . . . .”<linebreak/><linebreak/><b>Example</b> from Deanne Maynard: “The industry <b>sought to</b> justify that time period by arguing that patents did not adequately protect investment in biologics[.]”
+Test Sentence:
+The aim of this book is to give general advice.
+Corrected Test Sentence:
+This book seeks to give general advice.
+
+XML Rule:
+<rule id="BRIEFCATCH_281025868524827903719537260966583393237" name="BRIEFCATCH_CONCISENESS_30117">
+	<pattern>
+		<token>the</token>
+		<token>aim</token>
+		<token>of</token>
+		<token postag="DT"/>
+		<token postag="NN|NN:U|NN:UN" postag_regexp="yes">
+			<exception regexp="yes">analysis|council|game|present|project|research|study|work</exception>
+		</token>
+		<token>is</token>
+		<token>to</token>
+		<token postag="VB"/>
+	</pattern>
+	<message>Would using fewer words help tighten the sentence?|**Example** from Justice Stevens: “The holder class action that respondent **tried to plead** . . . is distinguishable from a typical Rule 10b-5 class action in only one respect[.]”|**Example** from Eric Holder: “Now, more than a decade later, [Plaintiffs] **seek to hold** . . . .”|**Example** from Deanne Maynard: “The industry **sought to** justify that time period by arguing that patents did not adequately protect investment in biologics[.]”</message>
+	<suggestion><match no="4"/> <match no="5"/> seeks <match no="7"/> <match no="8"/></suggestion>
+	<short>{"ruleGroup":null,"ruleGroupIdx":0,"isConsistency":false,"isStyle":true,"correctionCount":1,"priority":"8.328","WORD":true,"OUTLOOK":true}</short>
+	<example correction="This book seeks to give"><marker>The aim of this book is to give</marker> general advice.</example>
+</rule>
+
+###
+
+Ad Hoc:
+( RX(.*?) !bed !conform !doctor !him !house !office !out !place !room !them !you ) as ( closely fast quickly simply soon ) as possible
+Rule Number:
+30118
+Correction:
+$0 $2
+Category:
+Conciseness
+Explanation:
+Would using fewer words help tighten the sentence?
+Test Sentence:
+Say it as simply as possible. 
+Corrected Test Sentence:
+Say it simply.
+
+XML Rule:
+<rule id="BRIEFCATCH_85326884043711870554689824506910775620" name="BRIEFCATCH_CONCISENESS_30118">
+	<pattern>
+		<token>
+			<exception regexp="yes">bed|conform|doctor|him|house|office|out|place|room|them|you</exception>
+		</token>
+		<token>as</token>
+		<token regexp="yes">closely|fast|quickly|simply|soon</token>
+		<token>as</token>
+		<token>possible</token>
+	</pattern>
+	<message>Would using fewer words help tighten the sentence?</message>
+	<suggestion><match no="1"/> <match no="3"/></suggestion>
+	<short>{"ruleGroup":null,"ruleGroupIdx":0,"isConsistency":false,"isStyle":true,"correctionCount":1,"priority":"5.262","WORD":true,"OUTLOOK":true}</short>
+	<example correction="it simply">Say <marker>it as simply as possible</marker>.</example>
+</rule>
 
 ###
 
@@ -265,8 +332,7 @@ Example:
 the ( possibility probability likelihood ) to ( VB !can !case !contract !counsel !court !dissent !district !equal !even !evidence !found !jail !judge !motion !people !respect !source !still !title !trial !up !view !while !will ) ( and or ) ( to ~ ) ( VB !can !case !contract !counsel !court !dissent !district !equal !even !evidence !found !jail !judge !motion !people !respect !source !still !title !trial !up !view !while !will )			
 This string would flag “the possibility to sing and dance”. It would flag “the likelihood to sing and dance”. It would flag “the likelihood to sing and to dance”. But it would not flag “the possibility to sing but dance”. It would not flag “the probability to respect or deny”.			
 IV.          Corrections			
-Corrections manipulate and transform any text flagged by a rule. The corrections refer to the rule tokens by number. $0 refers to the first token, $1 to the second, and so on.			
-When a token number or word is preceded by a hyphen, what precedes the hyphen tells you what to do with that numbered token or word. If a rule is “CT(run) fast”, for example, and if the correction for that rule is “sprint-$0”, then the correction of the phrase “he ran fast” would be “he sprinted”, because “ran” is the past tense of “run” and “sprinted” is the past tense of “sprint.” If a rule is “CT(succeed) in VBG”, for example, and if the correction for that rule is “$2-$0”, then the correction for the phrase “she succeeded in reaching the top” would be “she reached the top”.			
+Corrections in the example tag provide the text that will replace everything inside the `marker` tags. Make sure when creating these, the corrected sentence would make sense when substituting in the correction. This would include no overlapping or duplicated words. However, and this is very important, if a word does not match the pattern for the rule, do not include it in the correction or within the marker tags.
 Sometimes a rule has more than one possible correction. In that case, multiple alternative corrections are separated by the “@” symbol.			
 
 
