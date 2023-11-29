@@ -33,21 +33,9 @@ if 'rule_to_modify' not in st.session_state:
 
 actions = ['Create', 'Modify', 'Disable']
 disable_scopes = ['Whole Rule', 'Element']
-parent_element_scopes = ['Antipattern', 'Pattern', 'Suggestion', 'Example']
+parent_element_scopes = ['Antipattern', 'Pattern', 'Message', 'Suggestion', 'Short', 'Example']
+element_actions = ['Add', 'Delete', 'Change']
 child_element_scopes = ['---', 'Token', 'Marker']
-
-modifications = ['Antipattern',
-                   'Add exception to token',
-                   'Change final token so it requires one of these words',
-                   'Add token at end requiring one of these words',
-                   'Change second token',
-                   'Add tokens before and after',
-                   'Exclude from initial token',
-                   'Exclude from first token',
-                   'Antipatterns',
-                   'Add required tokens both before and after the string',
-                   'Exclude from final token',
-                   'Exclude from second token']
 
 st.markdown("## Rule Modifying")
 st.divider()
@@ -116,6 +104,24 @@ def comment_out_element(xml_string: str, parent_type: str, parent_index: int, ch
     except IndexError as e:
         st.error(f"Index error: {e}")
         return None
+
+
+def add_modification_section():
+    """
+    Adds modifications to the session state
+    """
+    st.session_state.modifications.append({
+        "target_element": "",
+        "element_action": "",
+        "specific_actions": ""
+    })
+
+
+def remove_modification_section(index: int):
+    """
+    Removes a modification section from the list
+    """
+    st.session_state.modifications.pop(index)
 
 
 modification_action = st.selectbox("Action to take:", actions)
@@ -224,33 +230,57 @@ elif modification_action == "Disable":
         if st.button("Update Repo"):
             create_pr(rule_name=st.session_state['rule_to_modify'], modified_rule=st.session_state['modified_rule'])
 else:
+    if 'modifications' not in st.session_state:
+        st.session_state.modifications = []
     st.session_state['modified'] = False
     st.session_state['modified_rule'] = None
     rule_to_modify = st.selectbox("Select rule to modify:", rules.keys())
     with st.expander("Original rule"):
         st.code(rules[rule_to_modify])
 
-    selected_modification = st.selectbox("Modification:", modifications)
-    specific_actions = st.text_area("Specific Actions:")
+    if st.button('Add another modification'):
+        add_modification_section()
+
+    # Display the form sections
+    for i, modification in enumerate(st.session_state.modifications):
+        with st.container():
+            st.markdown(f"### Modification {i+1}")
+            modification["target_element"] = st.selectbox(f"Target Element {i+1}:", parent_element_scopes, key=f"target_element_{i}")
+            modification["element_action"] = st.selectbox(f"What do you want to do to the element {i+1}:", element_actions, key=f"element_action_{i}")
+            modification["specific_actions"] = st.text_area(f"Specific Actions {i+1}:", key=f"specific_actions_{i}")
+            if st.button(f"Remove Modification {i+1}", key=f"remove_modification_{i}"):
+                remove_modification_section(i)
+                st.experimental_rerun()
     if st.button("Modify") and not st.session_state.get('modified', False):
-        with st.spinner("Rewriting Rule..."):
-            response = requests.post(f"{API_URL}/rule-rewriting",
-                                    json={"selected_modification": selected_modification,
-                                        "specific_actions": [specific_actions],
-                                        "original_rule_text": rules[rule_to_modify]})
-            
-            if response.status_code == 200:
-                json_response = response.json()
-                st.session_state['modified'] = True
-                st.session_state['modified_rule'] = json_response["response"]
-                st.session_state['usage'] = json_response['usage']
-                st.write("Modified Rule:")
-                st.code(st.session_state['modified_rule'], language="xml-doc")
-                st.markdown(f"Input token count: {st.session_state['usage']['input_tokens']}")
-                st.markdown(f"Output token count: {st.session_state['usage']['output_tokens']}")
-                st.markdown(f"Cost: {st.session_state['usage']['cost']}")
-            else:
-                st.error("Failed to rewrite rule. Please check your inputs and try again.")
+        original_rule_text = rules[rule_to_modify]
+        total_usage = {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost": 0
+        }
+        for modification in st.session_state.modifications:
+            with st.spinner(f"Processing Modification {st.session_state.modifications.index(modification)+1}..."):
+                response = requests.post(f"{API_URL}/rule-rewriting",
+                                        json={"target_element": modification["target_element"],
+                                            "element_action": modification["element_action"],
+                                            "specific_actions": [modification["specific_actions"]],
+                                            "original_rule_text": original_rule_text})
+                if response.status_code == 200:
+                    json_response = response.json()
+                    original_rule_text = json_response["response"]  # Update the rule text for the next modification
+                    # Update total usage
+                    total_usage["input_tokens"] += json_response['usage']['input_tokens']
+                    total_usage["output_tokens"] += json_response['usage']['output_tokens']
+                    total_usage["cost"] += json_response['usage']['cost']
+                else:
+                    st.error(f"Failed to rewrite rule in Modification {st.session_state.modifications.index(modification)+1}. Please check your inputs and try again.")
+                    break  # Exit the loop if there's an error
+        if response.status_code == 200:
+            st.write("Final Modified Rule:")
+            st.code(original_rule_text, language="xml-doc")
+            st.markdown(f"Total Input token count: {total_usage['input_tokens']}")
+            st.markdown(f"Total Output token count: {total_usage['output_tokens']}")
+            st.markdown(f"Total Cost: {total_usage['cost']}")
 
 
     if 'modified' in st.session_state and st.session_state['modified']:

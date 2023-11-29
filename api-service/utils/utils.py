@@ -13,7 +13,8 @@ from domain.prompts import (
     PARENTHESES_REWRITING_PROMPT,
     CREATE_RULE_FROM_ADHOC_SYSTEM_PROMPT
 )
-from domain.modifier_prompts import RULE_MODIFYING_SYSTEM_PROMPTS, RULE_USER_TEXT_TEMPLATE
+from domain.modifier_prompts import RULE_USER_TEXT_TEMPLATE
+from domain.modifier_prompts.common_instructions import STANDARD_PROMPT
 from utils.logger import setup_logger
 
 pricing = json.load(open("pricing.json"))
@@ -254,16 +255,17 @@ def pull_xml_from_github() -> Dict:
         return None
 
 
-def rewrite_rule_helper(original_rule: str, selected_modification: str, specific_actions: List[str] = []) -> Tuple[str, Dict]:
+def rewrite_rule_helper(original_rule: str, target_element: str, element_action: str, specific_actions: List[str] = []) -> Tuple[str, Dict]:
     """
     Calls GPT with the corresponding system prompt and the user text formatted
     """
     # get correct system prompt
-    action_system_prompt = RULE_MODIFYING_SYSTEM_PROMPTS[selected_modification]
+    action_system_prompt = STANDARD_PROMPT
 
     # format user text
     user_text = RULE_USER_TEXT_TEMPLATE.replace("{{origininal_rule_text}}", original_rule)
-    user_text = user_text.replace("{{action_to_take}}", selected_modification)
+    user_text = user_text.replace("{{target_element}}", target_element)
+    user_text = user_text.replace("{{element_action}}", element_action)
     user_text = user_text.replace("{{list of specific modifications}}", "\n".join(specific_actions))
     
     messages = generate_simple_message(system_prompt=action_system_prompt, user_prompt=user_text)

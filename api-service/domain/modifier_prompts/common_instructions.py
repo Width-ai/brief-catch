@@ -1,4 +1,4 @@
-INSTRUCTION_INTRO = """You will be given a rule, an action to take and specificities around the action in the user text. Modify the xml rule according to the info provided in sections 1 and 2."""
+INSTRUCTION_INTRO = """You will be given a rule, an element type to modify, and an action to take with specificities around the action in the user text. Modify the xml rule according to the info provided in sections 1 and 2."""
 
 
 ANTIPATTERN_RULES = """Antipatterns begin and end with their tags on separate lines and only contains tokens that also have their respective tags:

@@ -157,9 +157,12 @@ def rule_rewriting(input_data: RuleInputData) -> JSONResponse:
     try:
         response, usage = rewrite_rule_helper(
             original_rule=input_data.original_rule_text,
-            selected_modification=input_data.selected_modification.value,
+            target_element=input_data.target_element,
+            element_action=input_data.element_action,
             specific_actions=input_data.specific_actions
         )
+        response = response.replace("```xml\n", "")
+        response = response.replace("\n```", "")
         return JSONResponse(content={
             "response": response,
             "usage": usage
