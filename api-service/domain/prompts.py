@@ -89,6 +89,39 @@ CREATE_RULE_FROM_ADHOC_SYSTEM_PROMPT = """You are a system that takes in ad hoc 
 
 
 Ad Hoc:
+( and is ) not without ( consequence consequences )
+Rule Number:
+30120
+Correction:
+$0 significant @ $0 weighty @ $0 consequential 
+Category:
+Conciseness
+Explanation:
+Would using fewer words help tighten the sentence?
+Test Sentence:
+The event is not without consequence. 
+Corrected Test Sentence:
+The event is significant.
+
+XML Rule:
+<rule id="{new_rule_id}" name="BRIEFCATCH_CONCISENESS_30120">
+        <pattern>
+                <token regexp="yes">and|is</token>
+                <token>not</token>
+                <token>without</token>
+                <token regexp="yes">consequence|consequences</token>
+        </pattern>
+        <message>Would using fewer words help tighten the sentence?</message>
+        <suggestion><match no="1"/> significant</suggestion>
+        <suggestion><match no="1"/> weighty</suggestion>
+        <suggestion><match no="1"/> consequential</suggestion>
+        <short>{"ruleGroup":null,"ruleGroupIdx":0,"isConsistency":false,"isStyle":true,"correctionCount":3,"priority":"4.145","WORD":true,"OUTLOOK":true}</short>
+        <example correction="is significant|is weighty|is consequential">The event <marker>is not without consequence</marker>.</example>
+</rule>
+
+###
+
+Ad Hoc:
 ( CT(be) and ) a bit ( JJ.*? more !much !of )
 Rule Number:
 30115
@@ -195,6 +228,7 @@ XML Rule:
     <short>{"ruleGroup":null,"ruleGroupIdx":0,"isConsistency":false,"isStyle":true,"correctionCount":3,"priority":"8.252","WORD":true,"OUTLOOK":true}</short>
     <example correction="But this|Then, this|But then this"><marker>In that case, however, this</marker> subtitle should tell you.</example>
 </rule>
+
 
 ###
 
@@ -328,15 +362,30 @@ When a word or Part of Speech tag is preceded by “!”, that word or tag is ex
 “SKIP” is always followed by a cardinal number. The number tells you how many tokens can come between the preceding token and the next one. The string “dog SKIP4 cat”, for example, would flag “The dog likes the cat” but would not flag “The dog likes the neighbor’s old cat,” nor would it flag “The cat likes the dog”.			
 A backward slash “\” before a word means a special character or case-sensitive.			
 “CT” refers to the infinitive form of a verb that can be conjugated. “CT(read)”, for example, could be “reads”, “read”, “reading”, etc.			
-Example:			
-the ( possibility probability likelihood ) to ( VB !can !case !contract !counsel !court !dissent !district !equal !even !evidence !found !jail !judge !motion !people !respect !source !still !title !trial !up !view !while !will ) ( and or ) ( to ~ ) ( VB !can !case !contract !counsel !court !dissent !district !equal !even !evidence !found !jail !judge !motion !people !respect !source !still !title !trial !up !view !while !will )			
-This string would flag “the possibility to sing and dance”. It would flag “the likelihood to sing and dance”. It would flag “the likelihood to sing and to dance”. But it would not flag “the possibility to sing but dance”. It would not flag “the probability to respect or deny”.			
 IV.          Corrections			
 Corrections in the example tag provide the text that will replace everything inside the `marker` tags. Make sure when creating these, the corrected sentence would make sense when substituting in the correction. This would include no overlapping or duplicated words. However, and this is very important, if a word does not match the pattern for the rule, do not include it in the correction or within the marker tags.
 Sometimes a rule has more than one possible correction. In that case, multiple alternative corrections are separated by the “@” symbol.			
 
 
 Important Notes:
-- always set the rule id to `{new_rule_id}`
-- do not surround your response with "```xml...```"
+- Always set the rule id to `{new_rule_id}`
+- Only return the rule XML, do not introduce it or wrap it with back ticks.
+- If the ad hoc version has a part of speech tag in the same parentheses as suggestions, use the `<or>...</or>` tag with the part of speech tag as one token and the other options as a regexp token. for example with the input: 
+keep the change ( NNPS how that when)
+the output pattern would be:
+<pattern>
+  <token>keep</token>
+  <token>the</token>
+  <token>change</token>
+  <or>
+    <token postag="NNPS"/>
+    <token regexp="yes">how|that|when</token>
+  </or>
+</pattern>
+  - Note how the or tag is applied ONLY when the part of speech tag is inside the same parentheses as "how that when". Do not use the or tag if a part of speech tag is separate from other options. If using the or tag, make sure to use the regexp field and include multiple options in one token separated by `|`.
+- The only instance that marker tags should be in the pattern is if there is a SENT_START postag in a token in the pattern. In this case, all tokens that succeed the SENT_START token need to be nested within marker tags, so that the SENT_START token is applied correctly.
+- When converting the explanation to the message tag, make sure to convert any HTML notation to its markdown equivalent.
+- The exception tags are only used for words that are marked with `!`. If you see you need to make an exception tag, make a note of this in your thoughts to determine which group of options needs to be exceptions and which are regular regexp.
+
+Write your thoughts breaking down each part of the rule you are about to write, surround these thoughts in tags like <THOUGHT>...</THOUGHT>. Write up to 100 words thinking through your choices and considering the rules laid out
 """

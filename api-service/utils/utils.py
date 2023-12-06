@@ -3,6 +3,7 @@ import backoff
 import math
 import openai
 import os
+import re
 import tiktoken
 from lxml import etree
 from collections import defaultdict
@@ -324,6 +325,17 @@ def update_rule_helper(modified_rule_name: str, modified_rule: str) -> str:
         return None
 
 
+def remove_thought_tags(input_text: str) -> str:
+    """
+    Removes any text between the thought tags. removes the tags too
+    """
+    thought_pattern = r'<THOUGHT>.*?</THOUGHT>'
+    # Use re.sub to replace the pattern with an empty string
+    cleaned_text = re.sub(thought_pattern, '', input_text, flags=re.DOTALL)
+    return cleaned_text
+
+
+
 def create_rule_helper(
         ad_hoc_syntax: str,
         rule_number: str,
@@ -353,4 +365,6 @@ Corrected Test Sentence:
 XML Rule:"""
     messages = generate_simple_message(system_prompt=CREATE_RULE_FROM_ADHOC_SYSTEM_PROMPT, user_prompt=user_text)
 
-    return call_gpt_with_backoff(messages=messages, model="gpt-4-1106-preview", temperature=0, max_length=1200)
+    response, usage = call_gpt_with_backoff(messages=messages, model="gpt-4-1106-preview", temperature=0, max_length=1480)
+    cleaned_response = remove_thought_tags(response)
+    return cleaned_response.strip(), usage
