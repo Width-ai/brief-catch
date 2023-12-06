@@ -41,3 +41,7 @@ class CreateRuleInput(BaseModel):
     explanation: str
     test_sentence: str
     test_sentence_correction: str
+
+
+class NgramInput(BaseModel):
+    rule_text: str

@@ -9,9 +9,9 @@ from collections import defaultdict
 from fastapi import FastAPI, Form, UploadFile, File
 from fastapi.responses import JSONResponse
 from domain.prompts import TOPIC_SENTENCE_SYSTEM_PROMPT, QUOTATION_SYSTEM_PROMPT
-from domain.models import InputData, SentenceRankingInput, InputDataList, RuleInputData, UpdateRuleInput, CreateRuleInput
+from domain.models import InputData, SentenceRankingInput, InputDataList, RuleInputData, UpdateRuleInput, CreateRuleInput, NgramInput
 from utils.utils import generate_simple_message, call_gpt_with_backoff, setup_logger, rank_sentence, call_gpt3, \
-    rewrite_parentheses_helper, rewrite_rule_helper, pull_xml_from_github, update_rule_helper, create_rule_helper
+    rewrite_parentheses_helper, rewrite_rule_helper, pull_xml_from_github, update_rule_helper, create_rule_helper, ngram_helper
 
 logger = setup_logger(__name__)
 
@@ -213,4 +213,15 @@ async def create_rule(input_data: CreateRuleInput) -> JSONResponse:
     except Exception as e:
         logger.error(e)
         return JSONResponse(content={"error": str(e)}, status_code=500)
-    
+
+
+@app.post("/ngram-analysis")
+async def ngram_analysis(input_data: NgramInput) -> JSONResponse:
+    """
+    Take in the rule and perform analysis, returning the clusters of records from ngram
+    """
+    try:
+        return JSONResponse(content=ngram_helper(input_data.rule_text))
+    except Exception as e:
+        logger.error(e)
+        return JSONResponse(content={"error": str(e)}, status_code=500)

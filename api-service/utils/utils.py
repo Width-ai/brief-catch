@@ -3,6 +3,7 @@ import backoff
 import math
 import openai
 import os
+import pandas as pd
 import re
 import tiktoken
 from lxml import etree
@@ -16,6 +17,12 @@ from domain.prompts import (
 )
 from domain.modifier_prompts import RULE_USER_TEXT_TEMPLATE
 from domain.modifier_prompts.common_instructions import STANDARD_PROMPT
+from domain.ngram_prompts.prompts import (
+    SEGMENT_CREATION_SYSTEM_PROMPT,
+    IDENTIFY_PATTERNS_SYSTEM_PROMPT,
+    CONDENSE_CLUSTERS_SYSTEM_PROMPT,
+    CONDENSE_CLUSTERS_USER_TEMPLATE
+)
 from utils.logger import setup_logger
 
 pricing = json.load(open("pricing.json"))
@@ -368,3 +375,86 @@ XML Rule:"""
     response, usage = call_gpt_with_backoff(messages=messages, model="gpt-4-1106-preview", temperature=0, max_length=1480)
     cleaned_response = remove_thought_tags(response)
     return cleaned_response.strip(), usage
+
+
+def extract_suggestion_words(input_string: str) -> List[str]:
+    """
+    Extract suggestion words separated by the @ signs
+    """
+    lines = input_string.split('\n')
+    for line in lines:
+        if '@' in line:
+            words = [word.strip() for word in line.split('@')]
+            return words
+    return []
+
+
+def extract_json_tags(input_text: str) -> str:
+    """
+    Extracts the text between the JSON tags
+    """
+    json_pattern = r'<JSON>.*?</JSON>'
+    extracted_text = re.findall(json_pattern, input_text, flags=re.DOTALL)[0]
+    extracted_text = extracted_text.replace("<JSON>", "")
+    extracted_text = extracted_text.replace("</JSON>", "")
+    return extracted_text.strip()
+
+
+def rank_records_by_score(data: Dict) -> Dict:
+    # Check if 'reranking' is in the dictionary and is a list
+    for i, group in enumerate(data['reranking']):
+        data['reranking'][i] = sorted(group, key=lambda x: float(x['score']), reverse=True)
+    return data
+
+
+def ngram_helper(rule_text: str) -> Dict:
+    """
+    Helper function to perform the ngram analysis
+    """
+    # pull the suggestions from the rule text
+    extracted_words = extract_suggestion_words(rule_text)
+    # load the csv with ngram data
+    df = pd.read_csv("data/Ngram Over 1 score.csv")
+    df.drop(columns=["Unnamed: 2", "Unnamed: 3", "Unnamed: 4"], inplace=True)
+    ngram_data = [
+        {
+            extracted_word: df[df['ngram'].str.contains(r'\b{}\b'.format(re.escape(extracted_word)), na=False, case=False, regex=True)].to_dict(orient='records')
+        }
+        for extracted_word in extracted_words
+    ]
+    segment_messages = generate_simple_message(
+        system_prompt=SEGMENT_CREATION_SYSTEM_PROMPT,
+        user_prompt=json.dumps(ngram_data))
+    segment_output, segment_usage = call_gpt_with_backoff(
+        messages=segment_messages,
+        model="gpt-4-1106-preview",
+        temperature=0,
+        max_length=1240)
+    cleaned_output = json.loads(remove_thought_tags(segment_output).strip())
+    # remove any segement with just one record
+    cleaned_output['reranking'] = [item for item in cleaned_output['reranking'] if len(item) > 1]
+    # sort the records in each group to be in order by score
+    ranked_groups = rank_records_by_score(cleaned_output)
+    pattern_messages = generate_simple_message(
+        system_prompt=IDENTIFY_PATTERNS_SYSTEM_PROMPT,
+        user_prompt=json.dumps(ranked_groups.get("reranking", [])))
+    pattern_output, pattern_usage = call_gpt_with_backoff(
+        messages=pattern_messages,
+        model="gpt-4-1106-preview",
+        temperature=0,
+        max_length=1045)
+    # condense the clusters where patterns are alike
+    condensed_messages = generate_simple_message(
+        system_prompt=CONDENSE_CLUSTERS_SYSTEM_PROMPT,
+        user_prompt=CONDENSE_CLUSTERS_USER_TEMPLATE.replace("{{cluster_dictionary}}", pattern_output))
+    condensed_output, condense_usage = call_gpt_with_backoff(
+        messages=condensed_messages,
+        model="gpt-4-1106-preview",
+        temperature=0,
+        max_length=1600)
+    extracted_condensed_clusters = extract_json_tags(condensed_output)
+    return {
+        "clusters": json.loads(extracted_condensed_clusters),
+        "flags": ranked_groups.get("flags", []),
+        "usages": [segment_usage, pattern_usage, condense_usage]
+    }
