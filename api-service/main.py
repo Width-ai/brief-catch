@@ -1,18 +1,21 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 import json
 import openai
 import os
+import random
 from collections import defaultdict
-from dotenv import load_dotenv
 from fastapi import FastAPI, Form, UploadFile, File
 from fastapi.responses import JSONResponse
 from domain.prompts import TOPIC_SENTENCE_SYSTEM_PROMPT, QUOTATION_SYSTEM_PROMPT
-from domain.models import InputData, SentenceRankingInput, InputDataList
+from domain.models import InputData, SentenceRankingInput, InputDataList, RuleInputData, UpdateRuleInput, CreateRuleInput, NgramInput
 from utils.utils import generate_simple_message, call_gpt_with_backoff, setup_logger, rank_sentence, call_gpt3, \
-    rewrite_parentheses_helper
+    rewrite_parentheses_helper, rewrite_rule_helper, pull_xml_from_github, update_rule_helper, create_rule_helper, ngram_helper
 
 logger = setup_logger(__name__)
 
-load_dotenv()
+
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
@@ -171,6 +174,93 @@ async def bulk_generate_prev_word(file: UploadFile = File(...)) -> JSONResponse:
                 "usage": usage
             })
         return JSONResponse(content=response_data)
+    except Exception as e:
+        logger.error(e)
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
+@app.get("/list-rules")
+async def list_rules() -> JSONResponse:
+    try:
+        return JSONResponse(content={"rules": pull_xml_from_github()})
+    except Exception as e:
+        logger.error(e)
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
+@app.post("/rule-rewriting")
+def rule_rewriting(input_data: RuleInputData) -> JSONResponse:
+    """
+    Modify an existing rule based on input and output the new version
+    """
+    try:
+        response, usage = rewrite_rule_helper(
+            original_rule=input_data.original_rule_text,
+            target_element=input_data.target_element,
+            element_action=input_data.element_action,
+            specific_actions=input_data.specific_actions
+        )
+        response = response.replace("```xml\n", "")
+        response = response.replace("\n```", "")
+        return JSONResponse(content={
+            "response": response,
+            "usage": usage
+        })
+    except Exception as e:
+        logger.error(e)
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
+@app.post("/update-rule")
+async def update_rule(input_data: UpdateRuleInput) -> JSONResponse:
+    """
+    Update the rule in the repo and create a PR. Returns a link to the PR
+    """
+    try:
+        return JSONResponse(content={
+            "pull_request_link": update_rule_helper(
+                modified_rule_name=input_data.modified_rule_name,
+                modified_rule=input_data.modified_rule
+            )
+        })
+    except Exception as e:
+        logger.error(e)
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
+@app.post("/create-rule")
+async def create_rule(input_data: CreateRuleInput) -> JSONResponse:
+    """
+    Create a rule based on given input, returns the new rule and the usage
+    """
+    try:
+        response, usage = create_rule_helper(
+            ad_hoc_syntax=input_data.ad_hoc_syntax,
+            rule_number=input_data.rule_number,
+            correction=input_data.correction,
+            category=input_data.category,
+            explanation=input_data.explanation,
+            test_sentence=input_data.test_sentence,
+            test_sentence_correction=input_data.test_sentence_correction,
+        )
+        new_id = ''.join(str(random.randint(0, 9)) for _ in range(40))
+        response = response.replace("{new_rule_id}", f"BRIEFCATCH_{new_id}")
+        return JSONResponse(content={
+            "response": response,
+            "usage": usage
+        })
+    except Exception as e:
+        logger.error(e)
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
+@app.post("/ngram-analysis")
+async def ngram_analysis(input_data: NgramInput) -> JSONResponse:
+    """
+    Take in the rule and perform analysis, returning the clusters of records from ngram
+    """
+    try:
+        return JSONResponse(content=ngram_helper(input_data.rule_text))
     except Exception as e:
         logger.error(e)
         return JSONResponse(content={"error": str(e)}, status_code=500)
