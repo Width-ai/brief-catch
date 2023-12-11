@@ -4,12 +4,15 @@ import math
 import openai
 import os
 import pandas as pd
+import pinecone
 import re
 import tiktoken
 from lxml import etree
 from collections import defaultdict
 from github import Github, Repository
 from typing import List, Tuple, Dict
+from uuid import uuid4
+from word_embeddings_sdk import WordEmbeddingsSession
 from domain.prompts import (
     SENTENCE_RANKING_SYSTEM_PROMPT,
     PARENTHESES_REWRITING_PROMPT,
@@ -30,7 +33,10 @@ utils_logger = setup_logger(__name__)
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 GITHUB_REPO = os.getenv("GITHUB_REPO")
 FILENAME = os.getenv("RULE_FILENAME", "grammar.xml")
-
+session = WordEmbeddingsSession(
+    customer_id=os.getenv("EMBEDDINGS_SAAS_ID"),
+    api_key=os.getenv("EMBEDDINGS_SAAS_API_KEY"))
+pinecone_indexes = {}
 
 
 
@@ -456,3 +462,92 @@ def ngram_helper(rule_text: str) -> Dict:
         "flags": ranked_groups.get("flags", []),
         "usages": [segment_usage, pattern_usage, condense_usage]
     }
+
+
+
+def get_pinecone_index(index_name: str) -> pinecone.Index:
+    """
+    Function to get pinecone index from cache or create new one
+    """
+    if index_name not in pinecone_indexes:
+        pinecone.init(api_key=str(os.getenv("PINECONE_API_KEY")), environment=str(os.getenv("PINECONE_ENV")))
+        pinecone_indexes[index_name] = pinecone.Index(index_name)
+    return pinecone_indexes[index_name]
+
+
+def get_embeddings(sentences: List[str], keep_alive: bool = False) -> List:
+    """
+    Call embeddings service, returns embeddings if successful or raises error
+    """
+    if keep_alive:
+        session.keep_alive(
+            model_id=os.getenv("EMBEDDINGS_SAAS_MODEL_ID"),
+            model_version_id=os.getenv("EMBEDDINGS_SAAS_MODEL_VERSION_ID")
+        )
+    return session.inference(
+        model_id=os.getenv("EMBEDDINGS_SAAS_MODEL_ID"),
+        model_version_id=os.getenv("EMBEDDINGS_SAAS_MODEL_VERSION_ID"),
+        input_texts=sentences
+    )
+
+
+def insert_into_pinecone(
+    index_name: str,
+    namespace: str,
+    records: List[dict],
+    keep_alive: bool = False,
+):
+    """
+    Insert records into pinecone with a schema of
+    {"id": "", "embedded_value": "", "full_input": "", "expected_output": ""}
+    """
+    index = get_pinecone_index(index_name=index_name)
+    for record in records:
+        if not record.get("embedded_value", ""):
+            utils_logger.warning("No value found for embeddings, passing empty string")
+        index.upsert(
+            vectors=[(
+                record.get("id", str(uuid4())),
+                get_embeddings([record.get("embedded_value", "")], keep_alive)[0],
+                {
+                    "full_input": record.get("full_input", ""),
+                    "expected_output": record.get("expected_output")
+                }
+            )],
+            namespace=namespace
+        )
+
+
+def search_pinecone_index(
+    index_name: str,
+    namespace: str,
+    search_param: str,
+    num_results: int,
+    threshold: float,
+    keep_embeddings_alive: bool = False,
+) -> List[dict]:
+    """
+    Function to search correct pinecone index
+    """
+    # load index
+    index = get_pinecone_index(index_name=index_name)
+
+    # get total number of vectors from pinecone to fix out of bounds error
+    TOTAL_NUM_VECTORS = index.describe_index_stats()['total_vector_count']
+    if num_results > TOTAL_NUM_VECTORS:
+        num_results = TOTAL_NUM_VECTORS
+
+    query_em = get_embeddings([search_param], keep_embeddings_alive)[0]
+
+    try:
+        result = index.query(query_em, namespace=namespace, top_k=num_results, includeMetadata=True)
+
+        # iterate through and only return the results that are within the set threshold
+        return [
+            match['metadata']
+            for match in result['matches']
+            if match['score'] >= threshold
+        ]
+    except Exception as e:
+        setup_logger(__name__).error(f"Error querying pinecone: {e}")
+        return []
