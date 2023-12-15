@@ -311,23 +311,31 @@ def update_rule_helper(modified_rule_name: str, modified_rule: str) -> str:
         rules_dict = parse_rules_from_xml(xml_content)
         
         # update the rule
+        if modified_rule_name in rules_dict.keys():
+            BRANCH_NAME = f"update_rule/{modified_rule_name}"
+            pr_message = f"Update {modified_rule_name}"
+            pr_body = f"This is an automatically generated PR to update {modified_rule_name}"
+        else:
+            BRANCH_NAME = f"create_rule/{modified_rule_name}"
+            pr_message = f"Create {modified_rule_name}"
+            pr_body = f"This is an automatically generated PR to create {modified_rule_name}"
+        
         rules_dict[modified_rule_name] = modified_rule
+
         new_rule_file = "\n".join(rules_dict.values())
 
-        BRANCH_NAME = f"update_rule/{modified_rule_name}"
+        # TODO: if branch with name already exists, add a _{number} starting with one at the end of the name until it works
         create_new_branch(repo=repo, branch_name=BRANCH_NAME)
         update_file = repo.update_file(
             path=FILENAME, 
-            message=f"Update {modified_rule_name}",
+            message=pr_message,
             content=new_rule_file,
             sha=file_content.sha, 
             branch=BRANCH_NAME
         )
 
-        pr_title = f"Update {modified_rule_name}"
-        pr_body = f"This is an automatically generated PR to update {modified_rule_name}"
         pr_base = "main"
-        pull_request = repo.create_pull(title=pr_title, body=pr_body, head=BRANCH_NAME, base=pr_base)
+        pull_request = repo.create_pull(title=pr_message, body=pr_body, head=BRANCH_NAME, base=pr_base)
 
         return pull_request.html_url
     except Exception as e:
