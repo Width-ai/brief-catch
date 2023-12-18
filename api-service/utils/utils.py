@@ -9,7 +9,7 @@ import re
 import tiktoken
 from lxml import etree
 from collections import defaultdict
-from github import Github, Repository
+from github import Github, Repository, GithubException
 from typing import List, Tuple, Dict
 from uuid import uuid4
 from word_embeddings_sdk import WordEmbeddingsSession
@@ -297,6 +297,25 @@ def create_new_branch(repo: Repository, branch_name: str):
         utils_logger.exception(e)
 
 
+def create_unique_branch(repo: Repository, base_branch_name: str) -> str:
+    """
+    Creates a new branch with a unique name by appending a number if needed.
+    """
+    branch_name = base_branch_name
+    counter = 1
+    while True:
+        try:
+            repo.get_branch(branch_name)
+            # If the branch exists, append/increment the counter and try again
+            branch_name = f"{base_branch_name}_{counter}"
+            counter += 1
+        except GithubException:
+            # If the branch does not exist, we can use this name
+            break
+    create_new_branch(repo=repo, branch_name=branch_name)
+    return branch_name
+
+
 
 def update_rule_helper(modified_rule_name: str, modified_rule: str) -> str:
     """
@@ -324,8 +343,7 @@ def update_rule_helper(modified_rule_name: str, modified_rule: str) -> str:
 
         new_rule_file = "\n".join(rules_dict.values())
 
-        # TODO: if branch with name already exists, add a _{number} starting with one at the end of the name until it works
-        create_new_branch(repo=repo, branch_name=BRANCH_NAME)
+        BRANCH_NAME = create_unique_branch(repo, BRANCH_NAME)
         update_file = repo.update_file(
             path=FILENAME, 
             message=pr_message,
