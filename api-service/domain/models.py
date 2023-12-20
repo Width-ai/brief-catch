@@ -44,4 +44,5 @@ class CreateRuleInput(BaseModel):
 
 
 class NgramInput(BaseModel):
-    rule_text: str
+    rule_pattern: str
+    suggestion_pattern: Optional[str] = None

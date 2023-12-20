@@ -26,6 +26,7 @@ from domain.ngram_prompts.prompts import (
     CONDENSE_CLUSTERS_SYSTEM_PROMPT,
     CONDENSE_CLUSTERS_USER_TEMPLATE
 )
+from utils.adhoc_rule_search import create_correction_regex, search_for_adhoc
 from utils.logger import setup_logger
 
 pricing = json.load(open("pricing.json"))
@@ -430,6 +431,17 @@ def extract_json_tags(input_text: str) -> str:
     return extracted_text.strip()
 
 
+def clean_json_output(raw_output: str) -> Dict:
+    """
+    Clean JSON output from GPT and load as dictionary
+    """
+    return json.loads(
+        remove_thought_tags(raw_output).replace(
+            "```json", ""
+        ).replace("```", "").strip()
+    )
+
+
 def rank_records_by_score(data: Dict) -> Dict:
     # Check if 'reranking' is in the dictionary and is a list
     for i, group in enumerate(data['reranking']):
@@ -437,57 +449,202 @@ def rank_records_by_score(data: Dict) -> Dict:
     return data
 
 
-def ngram_helper(rule_text: str) -> Dict:
+def truncate_ngram_dataset(dataset: List[Dict], top_n=50) -> Dict:
     """
-    Helper function to perform the ngram analysis
+    Takes in ngram dataset and only keeps the top_n records based on score
     """
-    # pull the suggestions from the rule text
-    extracted_words = extract_suggestion_words(rule_text)
-    # load the csv with ngram data
-    df = pd.read_csv("data/Ngram Over 1 score.csv")
-    df.drop(columns=["Unnamed: 2", "Unnamed: 3", "Unnamed: 4"], inplace=True)
-    ngram_data = [
-        {
-            extracted_word: df[df['ngram'].str.contains(r'\b{}\b'.format(re.escape(extracted_word)), na=False, case=False, regex=True)].to_dict(orient='records')
+    # make the list of dictionary a single dictionary
+    dataset = {list(item.keys())[0]: item[list(item.keys())[0]] for item in dataset}
+    # flatten the dataset
+    flattened = []
+    for word_key, ngrams in dataset.items():
+        for ngram in ngrams:
+            try:
+                score = float(ngram['score'])
+                flattened.append((word_key, ngram['ngram'], score))
+            except ValueError:
+                utils_logger.error(f"Error converting score to float for '{ngram['ngram']}': {ngram['score']}")
+    
+    # sort by score in descending order
+    sorted_flattened = sorted(flattened, key=lambda x: x[2], reverse=True)
+    
+    # take the top_n records, or all records if there are less than top_n
+    top_records = sorted_flattened[:min(top_n, len(sorted_flattened))]
+    
+    # recreate the dataset with only the top records
+    top_dataset = {}
+    for word, ngram, score in top_records:
+        if word not in top_dataset:
+            top_dataset[word] = []
+        top_dataset[word].append({'ngram': ngram, 'score': str(score)})
+    
+    return top_dataset
+
+
+def ngram_helper_suggestion(rule_pattern: str, suggestion_pattern: str) -> Dict:
+    """
+    Helper function to perform the ngram analysis on suggestion patterns
+    """
+    try:
+        suggestion_patterns = suggestion_pattern.split("@")
+        search_patterns = create_correction_regex(rule_pattern, suggestion_pattern)
+        # load the csv with ngram data
+        df = pd.read_csv("data/Ngram Over 1 score.csv")
+        df.drop(columns=["Unnamed: 2", "Unnamed: 3", "Unnamed: 4"], inplace=True)
+        df.dropna(inplace=True)
+        
+        # search the ngram data for the different patterns
+        ngram_data = []
+        flags = []
+        clusters = []
+        usages = []
+        for index, search_pattern in enumerate(search_patterns):
+            if search_pattern:
+                records = df[df['ngram'].str.contains(search_pattern)].to_dict(orient='records')
+                if records:
+                    ngram_data.append({suggestion_patterns[index].strip(): records})
+                else:
+                    flags.append(suggestion_patterns[index].strip())
+        
+        # drop any record not in the top n (default is 50)
+        ngram_data = truncate_ngram_dataset(ngram_data)
+        
+        if ngram_data:
+            # segment the results into groups with similar patterns
+            segment_messages = generate_simple_message(
+                system_prompt=SEGMENT_CREATION_SYSTEM_PROMPT,
+                user_prompt=json.dumps(ngram_data))
+            segment_output, segment_usage = call_gpt_with_backoff(
+                messages=segment_messages,
+                model="gpt-4-1106-preview",
+                temperature=0,
+                max_length=1279)
+            usages.append(segment_usage)
+            
+            cleaned_output = clean_json_output(segment_output)
+            
+            # remove any segement with just one record
+            cleaned_output['reranking'] = [item for item in cleaned_output['reranking'] if len(item) > 1]
+            
+            # sort the records in each group to be in order by score
+            ranked_groups = rank_records_by_score(cleaned_output)
+            pattern_messages = generate_simple_message(
+                system_prompt=IDENTIFY_PATTERNS_SYSTEM_PROMPT,
+                user_prompt=json.dumps(ranked_groups.get("reranking", [])))
+            pattern_output, pattern_usage = call_gpt_with_backoff(
+                messages=pattern_messages,
+                model="gpt-3.5-turbo",
+                temperature=0,
+                max_length=1983)
+            usages.append(pattern_usage)
+
+            cleaned_pattern_output = clean_json_output(pattern_output)
+            
+            # condense the clusters where patterns are alike
+            condensed_messages = generate_simple_message(
+                system_prompt=CONDENSE_CLUSTERS_SYSTEM_PROMPT,
+                user_prompt=CONDENSE_CLUSTERS_USER_TEMPLATE.replace(
+                    "{{cluster_dictionary}}", json.dumps(cleaned_pattern_output, indent=4)
+                )
+            )
+            condensed_output, condense_usage = call_gpt_with_backoff(
+                messages=condensed_messages,
+                model="gpt-4-1106-preview",
+                temperature=0,
+                max_length=1599)
+            usages.append(condense_usage)
+            extracted_condensed_clusters = extract_json_tags(condensed_output)
+            clusters = clean_json_output(extracted_condensed_clusters)
+        return {
+            "clusters": clusters,
+            "flags": flags,
+            "usages": usages
         }
-        for extracted_word in extracted_words
-    ]
-    segment_messages = generate_simple_message(
-        system_prompt=SEGMENT_CREATION_SYSTEM_PROMPT,
-        user_prompt=json.dumps(ngram_data))
-    segment_output, segment_usage = call_gpt_with_backoff(
-        messages=segment_messages,
-        model="gpt-4-1106-preview",
-        temperature=0,
-        max_length=1240)
-    cleaned_output = json.loads(remove_thought_tags(segment_output).strip())
-    # remove any segement with just one record
-    cleaned_output['reranking'] = [item for item in cleaned_output['reranking'] if len(item) > 1]
-    # sort the records in each group to be in order by score
-    ranked_groups = rank_records_by_score(cleaned_output)
-    pattern_messages = generate_simple_message(
-        system_prompt=IDENTIFY_PATTERNS_SYSTEM_PROMPT,
-        user_prompt=json.dumps(ranked_groups.get("reranking", [])))
-    pattern_output, pattern_usage = call_gpt_with_backoff(
-        messages=pattern_messages,
-        model="gpt-4-1106-preview",
-        temperature=0,
-        max_length=1045)
-    # condense the clusters where patterns are alike
-    condensed_messages = generate_simple_message(
-        system_prompt=CONDENSE_CLUSTERS_SYSTEM_PROMPT,
-        user_prompt=CONDENSE_CLUSTERS_USER_TEMPLATE.replace("{{cluster_dictionary}}", pattern_output))
-    condensed_output, condense_usage = call_gpt_with_backoff(
-        messages=condensed_messages,
-        model="gpt-4-1106-preview",
-        temperature=0,
-        max_length=1600)
-    extracted_condensed_clusters = extract_json_tags(condensed_output)
-    return {
-        "clusters": json.loads(extracted_condensed_clusters),
-        "flags": ranked_groups.get("flags", []),
-        "usages": [segment_usage, pattern_usage, condense_usage]
-    }
+    except Exception as e:
+        utils_logger.error(f"Error clustering ngram data: {e}")
+        utils_logger.exception(e)
+        raise e
+
+
+def ngram_helper_rule(rule_pattern: str) -> Dict:
+    """
+    Helper function to perform the ngram analysis on rule patterns
+    """
+    try:
+        search_pattern = " ".join(search_for_adhoc(rule_pattern))
+        # load the csv with ngram data
+        df = pd.read_csv("data/Ngram Over 1 score.csv")
+        df.drop(columns=["Unnamed: 2", "Unnamed: 3", "Unnamed: 4"], inplace=True)
+        df.dropna(inplace=True)
+        
+        # search the ngram data for the different patterns
+        ngram_data = []
+        flags = []
+        clusters = []
+        usages = []
+        records = df[df['ngram'].str.contains(search_pattern)].to_dict(orient='records')
+        if records:
+            ngram_data.append({rule_pattern: records})
+        else:
+            flags.append(rule_pattern)
+        
+        # drop any record not in the top n (default is 50)
+        ngram_data = truncate_ngram_dataset(ngram_data)
+        
+        if ngram_data:
+            # segment the results into groups with similar patterns
+            segment_messages = generate_simple_message(
+                system_prompt=SEGMENT_CREATION_SYSTEM_PROMPT,
+                user_prompt=json.dumps(ngram_data))
+            segment_output, segment_usage = call_gpt_with_backoff(
+                messages=segment_messages,
+                model="gpt-4-1106-preview",
+                temperature=0,
+                max_length=1240)
+            usages.append(segment_usage)
+            
+            cleaned_output = clean_json_output(segment_output)
+            
+            # remove any segement with just one record
+            cleaned_output['reranking'] = [item for item in cleaned_output['reranking'] if len(item) > 1]
+            
+            # sort the records in each group to be in order by score
+            ranked_groups = rank_records_by_score(cleaned_output)
+            pattern_messages = generate_simple_message(
+                system_prompt=IDENTIFY_PATTERNS_SYSTEM_PROMPT,
+                user_prompt=json.dumps(ranked_groups.get("reranking", [])))
+            pattern_output, pattern_usage = call_gpt_with_backoff(
+                messages=pattern_messages,
+                model="gpt-3.5-turbo",
+                temperature=0,
+                max_length=1983)
+            usages.append(pattern_usage)
+
+            cleaned_pattern_output = clean_json_output(pattern_output)
+            
+            # condense the clusters where patterns are alike
+            condensed_messages = generate_simple_message(
+                system_prompt=CONDENSE_CLUSTERS_SYSTEM_PROMPT,
+                user_prompt=CONDENSE_CLUSTERS_USER_TEMPLATE.replace(
+                    "{{cluster_dictionary}}", json.dumps(cleaned_pattern_output, indent=4)
+                ))
+            condensed_output, condense_usage = call_gpt_with_backoff(
+                messages=condensed_messages,
+                model="gpt-4-1106-preview",
+                temperature=0,
+                max_length=1600)
+            usages.append(condense_usage)
+            extracted_condensed_clusters = extract_json_tags(condensed_output)
+            clusters = clean_json_output(extracted_condensed_clusters)
+        return {
+            "clusters": clusters,
+            "flags": flags,
+            "usages": usages
+        }
+    except Exception as e:
+        utils_logger.error(f"Error clustering ngram data: {e}")
+        utils_logger.exception(e)
+        raise e
 
 
 

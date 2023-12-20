@@ -11,7 +11,8 @@ from fastapi.responses import JSONResponse
 from domain.prompts import TOPIC_SENTENCE_SYSTEM_PROMPT, QUOTATION_SYSTEM_PROMPT
 from domain.models import InputData, SentenceRankingInput, InputDataList, RuleInputData, UpdateRuleInput, CreateRuleInput, NgramInput
 from utils.utils import generate_simple_message, call_gpt_with_backoff, setup_logger, rank_sentence, call_gpt3, \
-    rewrite_parentheses_helper, rewrite_rule_helper, pull_xml_from_github, update_rule_helper, create_rule_helper, ngram_helper
+    rewrite_parentheses_helper, rewrite_rule_helper, pull_xml_from_github, update_rule_helper, create_rule_helper, \
+    ngram_helper_suggestion, ngram_helper_rule
 
 logger = setup_logger(__name__)
 
@@ -254,13 +255,28 @@ async def create_rule(input_data: CreateRuleInput) -> JSONResponse:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 
-@app.post("/ngram-analysis")
-async def ngram_analysis(input_data: NgramInput) -> JSONResponse:
+@app.post("/ngram-analysis-suggestions")
+async def ngram_analysis_suggestions(input_data: NgramInput) -> JSONResponse:
     """
-    Take in the rule and perform analysis, returning the clusters of records from ngram
+    Take in the rule and perform analysis on the suggestions, returning the clusters of records from ngram
+    """
+    if input_data.suggestion_pattern:
+        try:
+            return JSONResponse(content=ngram_helper_suggestion(input_data.rule_pattern, input_data.suggestion_pattern))
+        except Exception as e:
+            logger.error(e)
+            return JSONResponse(content={"error": str(e)}, status_code=500)
+    return JSONResponse(content={"response": "Missing required field, suggestion_pattern"}, status_code=500)
+
+
+
+@app.post("/ngram-analysis-rule")
+async def ngram_analysis_rule(input_data: NgramInput) -> JSONResponse:
+    """
+    Take in the rule and perform analysis on the rule pattern, returning the clusters of records from ngram
     """
     try:
-        return JSONResponse(content=ngram_helper(input_data.rule_text))
+        return JSONResponse(content=ngram_helper_rule(input_data.rule_pattern))
     except Exception as e:
         logger.error(e)
         return JSONResponse(content={"error": str(e)}, status_code=500)
