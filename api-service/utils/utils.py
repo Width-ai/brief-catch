@@ -18,6 +18,7 @@ from domain.prompts import (
     PARENTHESES_REWRITING_PROMPT,
     CREATE_RULE_FROM_ADHOC_SYSTEM_PROMPT
 )
+from domain.models import RuleToUpdate
 from domain.modifier_prompts import RULE_USER_TEXT_TEMPLATE
 from domain.modifier_prompts.common_instructions import STANDARD_PROMPT
 from domain.ngram_prompts.prompts import (
@@ -268,6 +269,17 @@ def pull_xml_from_github() -> Dict:
         return None
 
 
+def fetch_rule_by_id(rule_id: str) -> Tuple[str, str]:
+    """
+    Search for rule by given ID, this is not the long form ID in the rule, but the short id in the name
+    """
+    rule_dict = pull_xml_from_github()
+    for rule_name in rule_dict.keys():
+        if rule_name.endswith(f"_{rule_id}"):
+            return rule_dict.get(rule_name), rule_name
+    return None, ""
+
+
 def rewrite_rule_helper(original_rule: str, target_element: str, element_action: str, specific_actions: List[str] = []) -> Tuple[str, Dict]:
     """
     Calls GPT with the corresponding system prompt and the user text formatted
@@ -318,7 +330,7 @@ def create_unique_branch(repo: Repository, base_branch_name: str) -> str:
 
 
 
-def update_rule_helper(modified_rule_name: str, modified_rule: str) -> str:
+def update_rule_helper(rules_to_update: List[RuleToUpdate]) -> str:
     """
     Updates a rule in the grammar.xml file and creates a pull request
     """
@@ -331,16 +343,23 @@ def update_rule_helper(modified_rule_name: str, modified_rule: str) -> str:
         rules_dict = parse_rules_from_xml(xml_content)
         
         # update the rule
-        if modified_rule_name in rules_dict.keys():
-            BRANCH_NAME = f"update_rule/{modified_rule_name}"
-            pr_message = f"Update {modified_rule_name}"
-            pr_body = f"This is an automatically generated PR to update {modified_rule_name}"
+        if len(rules_to_update) == 1:
+            if rules_to_update[0].modified_rule_name in rules_dict.keys():
+                BRANCH_NAME = f"update_rule/{rules_to_update[0].modified_rule_name}"
+                pr_message = f"Update {rules_to_update[0].modified_rule_name}"
+                pr_body = f"This is an automatically generated PR to update {rules_to_update[0].modified_rule_name}"
+            else:
+                BRANCH_NAME = f"create_rule/{rules_to_update[0].modified_rule_name}"
+                pr_message = f"Create {rules_to_update[0].modified_rule_name}"
+                pr_body = f"This is an automatically generated PR to create {rules_to_update[0].modified_rule_name}"
         else:
-            BRANCH_NAME = f"create_rule/{modified_rule_name}"
-            pr_message = f"Create {modified_rule_name}"
-            pr_body = f"This is an automatically generated PR to create {modified_rule_name}"
-        
-        rules_dict[modified_rule_name] = modified_rule
+            BRANCH_NAME = "batch_update"
+            pr_message = f"Update {len(rules_to_update)} rules"
+            pr_body = f"This is an automatically generated PR to update {len(rules_to_update)} rules"
+
+
+        for rule in rules_to_update:
+            rules_dict[rule.modified_rule_name] = rule.modified_rule
 
         new_rule_file = "\n".join(rules_dict.values())
 

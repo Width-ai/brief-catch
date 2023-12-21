@@ -28,9 +28,13 @@ class RuleInputData(BaseModel):
     original_rule_text: Optional[str] = None
 
 
-class UpdateRuleInput(BaseModel):
+class RuleToUpdate(BaseModel):
     modified_rule_name: str
     modified_rule: str
+
+
+class UpdateRuleInput(BaseModel):
+    rules_to_update: List[RuleToUpdate]
 
 
 class CreateRuleInput(BaseModel):

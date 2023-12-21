@@ -47,8 +47,10 @@ def create_pr(rule_name: str, modified_rule: str):
         pr_response = requests.post(
             f"{API_URL}/update-rule",
             json={
-                "modified_rule_name": rule_name,
-                "modified_rule": modified_rule
+                "rules_to_update": [{
+                    "modified_rule_name": rule_name,
+                    "modified_rule": modified_rule
+                }]
             })
         pr_json = pr_response.json()
 

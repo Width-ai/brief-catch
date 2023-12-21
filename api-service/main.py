@@ -5,14 +5,16 @@ import json
 import openai
 import os
 import random
+import pandas as pd
 from collections import defaultdict
-from fastapi import FastAPI, Form, UploadFile, File
+from io import StringIO
+from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import JSONResponse
 from domain.prompts import TOPIC_SENTENCE_SYSTEM_PROMPT, QUOTATION_SYSTEM_PROMPT
 from domain.models import InputData, SentenceRankingInput, InputDataList, RuleInputData, UpdateRuleInput, CreateRuleInput, NgramInput
 from utils.utils import generate_simple_message, call_gpt_with_backoff, setup_logger, rank_sentence, call_gpt3, \
     rewrite_parentheses_helper, rewrite_rule_helper, pull_xml_from_github, update_rule_helper, create_rule_helper, \
-    ngram_helper_suggestion, ngram_helper_rule
+    ngram_helper_suggestion, ngram_helper_rule, fetch_rule_by_id
 
 logger = setup_logger(__name__)
 
@@ -201,8 +203,7 @@ def rule_rewriting(input_data: RuleInputData) -> JSONResponse:
             element_action=input_data.element_action,
             specific_actions=input_data.specific_actions
         )
-        response = response.replace("```xml\n", "")
-        response = response.replace("\n```", "")
+        response = response.replace("```xml\n", "").replace("\n```", "")
         return JSONResponse(content={
             "response": response,
             "usage": usage
@@ -210,6 +211,46 @@ def rule_rewriting(input_data: RuleInputData) -> JSONResponse:
     except Exception as e:
         logger.error(e)
         return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
+@app.post("/bulk-rule-rewriting")
+async def bulk_rule_rewriting(csv_file: UploadFile = File(...)) -> JSONResponse:
+    """
+    Modify existing rules based on a CSV file input and output the new versions
+    """
+    try:
+        # Read the CSV file into a pandas DataFrame
+        csv_string = StringIO((await csv_file.read()).decode())
+        df = pd.read_csv(csv_string)
+    except Exception as e:
+        logger.error(e)
+        raise JSONResponse(status_code=500, detail=f"Error reading CSV {str(e)}")
+
+    responses = []
+    for index, row in df.iterrows():
+        try:
+            original_rule_text, original_rule_name = fetch_rule_by_id(row['xml rule'])
+
+            response, usage = rewrite_rule_helper(
+                original_rule=original_rule_text,
+                target_element=row['target element'],
+                element_action=row['action to take (add, delete, change)'],
+                specific_actions=row['specific actions']
+            )
+
+            response = response.replace("```xml\n", "").replace("\n```", "")
+
+            responses.append({
+                "original_rule_id": row['xml rule'],
+                "original_rule_name": original_rule_name,
+                "response": response,
+                "usage": usage
+            })
+        except Exception as e:
+            logger.error(f"Error modifying rule index {index}: {e}")
+            logger.exception(e)
+
+    return JSONResponse(content={"results": responses})
 
 
 @app.post("/update-rule")
@@ -220,8 +261,7 @@ async def update_rule(input_data: UpdateRuleInput) -> JSONResponse:
     try:
         return JSONResponse(content={
             "pull_request_link": update_rule_helper(
-                modified_rule_name=input_data.modified_rule_name,
-                modified_rule=input_data.modified_rule
+                rules_to_update=input_data.rules_to_update
             )
         })
     except Exception as e:
