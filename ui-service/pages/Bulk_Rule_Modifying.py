@@ -48,6 +48,21 @@ def create_pr(rules_to_update: List[Dict]):
             st.error(f"Error creating PR: {pr_json.get('error')}")
 
 
+def display_and_modify_rules(bulk_rules: List[Dict]) -> None:
+    with st.form("bulk_rules_form"):
+        modified_rules = []
+        for i, rule in enumerate(bulk_rules):
+            rule_name = st.text_input(f"Rule Name {i+1}", value=rule["original_rule_name"], key=f"rule_name_{i}")
+            rule_response = st.text_area(f"Modified Rule {i+1}", value=rule["response"], key=f"rule_response_{i}", height=175)
+            modified_rules.append({
+                "original_rule_name": rule_name,
+                "response": rule_response
+            })
+        submitted = st.form_submit_button("Save Modifications")
+        if submitted:
+            st.session_state['bulk_rules'] = modified_rules
+            st.success("Modifications saved!")
+
 
 uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
 if uploaded_file is not None:
@@ -61,21 +76,21 @@ if uploaded_file is not None:
                     f"{API_URL}/bulk-rule-rewriting",
                     files=files
                 )
+                result = response.json()
                 
                 # Check if the request was successful
                 if response.status_code == 200:
                     st.success('Successfully performed batch modification')
-                    result = response.json()
                     st.session_state['bulk_rules'] = result["results"]
                     st.session_state['have_result'] = True
                 else:
-                    st.error(f'Error calling API endpoint. Status code: {response.status_code}. Text: {response.text}')
+                    st.error(f'Error calling API endpoint. Status code: {response.status_code}. Text: {result.get("errors")}')
             except Exception as e:
                 st.error(f'An error occurred: {e}')
 
 
 if st.session_state.get("have_result", False):
-    st.json(st.session_state.get("bulk_rules"))
+    display_and_modify_rules(st.session_state.get("bulk_rules"))
 
     if st.button("Open PR"):
         create_pr(st.session_state.get("bulk_rules"))

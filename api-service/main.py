@@ -227,6 +227,7 @@ async def bulk_rule_rewriting(csv_file: UploadFile = File(...)) -> JSONResponse:
         raise JSONResponse(status_code=500, detail=f"Error reading CSV {str(e)}")
 
     responses = []
+    errors = []
     for index, row in df.iterrows():
         try:
             original_rule_text, original_rule_name = fetch_rule_by_id(row['xml rule'])
@@ -234,7 +235,7 @@ async def bulk_rule_rewriting(csv_file: UploadFile = File(...)) -> JSONResponse:
             response, usage = rewrite_rule_helper(
                 original_rule=original_rule_text,
                 target_element=row['target element'],
-                element_action=row['action to take (add, delete, change)'],
+                element_action=row['action to take'],
                 specific_actions=row['specific actions']
             )
 
@@ -249,8 +250,10 @@ async def bulk_rule_rewriting(csv_file: UploadFile = File(...)) -> JSONResponse:
         except Exception as e:
             logger.error(f"Error modifying rule index {index}: {e}")
             logger.exception(e)
-
-    return JSONResponse(content={"results": responses})
+            errors.append(f"Error modifying rule index {index}: {e}")
+            
+    status_code = 200 if responses else 500
+    return JSONResponse(content={"results": responses, "errors": errors}, status_code=status_code)
 
 
 @app.post("/update-rule")
