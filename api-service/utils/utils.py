@@ -753,3 +753,17 @@ def search_pinecone_index(
     except Exception as e:
         setup_logger(__name__).error(f"Error querying pinecone: {e}")
         return []
+
+
+def create_df_from_analysis_data(data: List, data_type: str) -> pd.DataFrame:
+    if data_type == 'clusters':
+        # Assuming 'clusters' contains a list of dicts with 'pattern' and 'values'
+        flattened_data = []
+        for cluster in data:
+            for value in cluster['values']:
+                flattened_data.append({'pattern': cluster['pattern'], **value})
+        return pd.DataFrame(flattened_data)
+    elif data_type == 'usages':
+        return pd.DataFrame(data)
+    else:  # flags or other types
+        return pd.DataFrame(data, columns=['flags'])

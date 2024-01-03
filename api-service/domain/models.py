@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 
 class InputData(BaseModel):
@@ -50,3 +50,7 @@ class CreateRuleInput(BaseModel):
 class NgramInput(BaseModel):
     rule_pattern: str
     suggestion_pattern: Optional[str] = None
+
+
+class NgramAnalysis(BaseModel):
+    data: List[Dict]

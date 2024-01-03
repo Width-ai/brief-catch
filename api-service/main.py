@@ -7,14 +7,15 @@ import os
 import random
 import pandas as pd
 from collections import defaultdict
-from io import StringIO
+from io import StringIO, BytesIO
 from fastapi import FastAPI, UploadFile, File
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
+from typing import List, Dict
 from domain.prompts import TOPIC_SENTENCE_SYSTEM_PROMPT, QUOTATION_SYSTEM_PROMPT
-from domain.models import InputData, SentenceRankingInput, InputDataList, RuleInputData, UpdateRuleInput, CreateRuleInput, NgramInput
+from domain.models import InputData, SentenceRankingInput, InputDataList, RuleInputData, UpdateRuleInput, CreateRuleInput, NgramInput, NgramAnalysis
 from utils.utils import generate_simple_message, call_gpt_with_backoff, setup_logger, rank_sentence, call_gpt3, \
     rewrite_parentheses_helper, rewrite_rule_helper, pull_xml_from_github, update_rule_helper, create_rule_helper, \
-    ngram_helper_suggestion, ngram_helper_rule, fetch_rule_by_id
+    ngram_helper_suggestion, ngram_helper_rule, fetch_rule_by_id, create_df_from_analysis_data
 
 logger = setup_logger(__name__)
 
@@ -224,33 +225,41 @@ async def bulk_rule_rewriting(csv_file: UploadFile = File(...)) -> JSONResponse:
         df = pd.read_csv(csv_string)
     except Exception as e:
         logger.error(e)
-        raise JSONResponse(status_code=500, detail=f"Error reading CSV {str(e)}")
+        return JSONResponse(status_code=500, detail=f"Error reading CSV {str(e)}")
+
+    if 'target element' not in df.columns and 'action to take' not in df.columns and 'specific actions' not in df.columns:
+        return JSONResponse(status_code=500, detail=f"Columns missing 'target element' or 'action to take' or 'specific actions', current dataset has columns: {df.columns}")
 
     responses = []
     errors = []
-    for index, row in df.iterrows():
+    rule_modifications = df.groupby('xml rule')
+
+    for rule_id, modifications in rule_modifications:
         try:
-            original_rule_text, original_rule_name = fetch_rule_by_id(row['xml rule'])
+            original_rule_text, original_rule_name = fetch_rule_by_id(rule_id)
+            modified_rule_text = original_rule_text
 
-            response, usage = rewrite_rule_helper(
-                original_rule=original_rule_text,
-                target_element=row['target element'],
-                element_action=row['action to take'],
-                specific_actions=row['specific actions']
-            )
+            for _, modification in modifications.iterrows():
+                modified_rule_text, usage = rewrite_rule_helper(
+                    original_rule=modified_rule_text,
+                    target_element=modification['target element'],
+                    element_action=modification['action to take'],
+                    specific_actions=modification['specific actions']
+                )
 
-            response = response.replace("```xml\n", "").replace("\n```", "")
+            modified_rule_text = modified_rule_text.replace("```xml\n", "").replace("\n```", "")
 
             responses.append({
-                "original_rule_id": row['xml rule'],
+                "original_rule_id": rule_id,
                 "original_rule_name": original_rule_name,
-                "response": response,
+                "response": modified_rule_text,
                 "usage": usage
             })
         except Exception as e:
-            logger.error(f"Error modifying rule index {index}: {e}")
+            error_message = f"Error modifying rule ID {rule_id}: {e}"
+            logger.error(error_message)
             logger.exception(e)
-            errors.append(f"Error modifying rule index {index}: {e}")
+            errors.append(error_message)
             
     status_code = 200 if responses else 500
     return JSONResponse(content={"results": responses, "errors": errors}, status_code=status_code)
@@ -323,3 +332,69 @@ async def ngram_analysis_rule(input_data: NgramInput) -> JSONResponse:
     except Exception as e:
         logger.error(e)
         return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
+@app.post("/bulk-ngram-analysis")
+async def bulk_ngram_analysis(csv_file: UploadFile = File(...)) -> JSONResponse:
+    """
+    Do bulk ngram analysis given a file of patterns and suggestions
+    """
+    try:
+        # Read the CSV file into a pandas DataFrame
+        csv_string = StringIO((await csv_file.read()).decode())
+        df = pd.read_csv(csv_string)
+        df.dropna(inplace=True)
+    except Exception as e:
+        logger.error(e)
+        return JSONResponse(status_code=500, detail=f"Error reading CSV {str(e)}")
+
+    if '//Rule' not in df.columns and '//Correction' not in df.columns:
+        return JSONResponse(status_code=500, detail=f"Columns missing '//Correction' or '//Rule', current dataset has columns: {df.columns}")
+
+    responses = []
+    errors = []
+    records = df.to_dict(orient='records')
+    rule_number_key = [key for key in records[0] if 'number' in key.lower()][0]
+    for record in records:
+        try:
+            responses.append({
+                "rule_number": record[rule_number_key],
+                "correction_analysis": ngram_helper_suggestion(record.get("//Rule"), record.get("//Correction")),
+                "rule_analysis": ngram_helper_rule(record.get("//Rule"))
+            })
+        except Exception as e:
+            error_message = f"Error performing ngram analysis: {e}"
+            errors.append(error_message)
+            logger.error(error_message)
+            logger.exception(e)
+            
+    status_code = 200 if responses else 500
+    return JSONResponse(content={"results": responses, "errors": errors}, status_code=status_code)
+
+
+@app.post("/generate-excel")
+async def generate_excel(ngram_analysis: List[Dict]):
+    # Create a BytesIO buffer to write the Excel file to
+    output = BytesIO()
+    
+    # Create a Pandas Excel writer using the buffer as the file to write to
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        for analysis in ngram_analysis:
+            rule_number = analysis['rule_number']
+            for key in ['rule_analysis', 'correction_analysis']:
+                # Create a DataFrame for flags
+                df_flags = create_df_from_analysis_data(analysis[key]['flags'], 'flags')
+                # Create a DataFrame for clusters
+                df_clusters = create_df_from_analysis_data(analysis[key]['clusters'], 'clusters')
+                # Create a DataFrame for usages
+                df_usages = create_df_from_analysis_data(analysis[key]['usages'], 'usages')
+                # Concatenate all DataFrames
+                df = pd.concat([df_flags, df_clusters, df_usages], ignore_index=True)
+                # Write the DataFrame to the Excel writer
+                df.to_excel(writer, sheet_name=f"{rule_number}_{key}", index=False)
+    
+    # Seek to the beginning of the stream
+    output.seek(0)
+
+    # Create a streaming response to send back the Excel file
+    return StreamingResponse(output, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
