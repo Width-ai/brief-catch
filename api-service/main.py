@@ -225,10 +225,10 @@ async def bulk_rule_rewriting(csv_file: UploadFile = File(...)) -> JSONResponse:
         df = pd.read_csv(csv_string)
     except Exception as e:
         logger.error(e)
-        return JSONResponse(status_code=500, detail=f"Error reading CSV {str(e)}")
+        return JSONResponse(status_code=500, content=f"Error reading CSV {str(e)}")
 
     if 'target element' not in df.columns and 'action to take' not in df.columns and 'specific actions' not in df.columns:
-        return JSONResponse(status_code=500, detail=f"Columns missing 'target element' or 'action to take' or 'specific actions', current dataset has columns: {df.columns}")
+        return JSONResponse(status_code=500, content=f"Columns missing 'target element' or 'action to take' or 'specific actions', current dataset has columns: {df.columns}")
 
     responses = []
     errors = []
@@ -307,6 +307,63 @@ async def create_rule(input_data: CreateRuleInput) -> JSONResponse:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 
+@app.post("/bulk-rule-creation")
+async def bulk_rule_creation(csv_file: UploadFile = File(...)) -> JSONResponse:
+    """
+    Create rules based on a CSV file input and output the new rules
+    """
+    try:
+        # Read the CSV file into a pandas DataFrame
+        csv_string = StringIO((await csv_file.read()).decode())
+        df = pd.read_csv(csv_string)
+        df.dropna(inplace=True)
+    except Exception as e:
+        logger.error(e)
+        return JSONResponse(status_code=500, content=f"Error reading CSV {str(e)}")
+
+    expected_columns = ['ad_hoc_syntax', 'rule_number', 'correction', 'category', 'explanation', 'test_sentence', 'test_sentence_correction']
+    if (
+        'ad_hoc_syntax' not in df.columns and
+        'rule_number' not in df.columns and
+        'correction' not in df.columns and
+        'category' not in df.columns and
+        'explanation' not in df.columns and
+        'test_sentence' not in df.columns and
+        'test_sentence_correction' not in df.columns):
+        return JSONResponse(status_code=500, content=f"Columns missing {' or '.join(expected_columns)}, current dataset has columns: {df.columns}")
+
+    responses = []
+    errors = []
+    for record in df.to_dict(orient="records"):
+        logger.info(f"{record=}")
+        try:
+            response, usage = create_rule_helper(
+                ad_hoc_syntax=record.get("ad_hoc_syntax"),
+                rule_number=record.get("rule_number"),
+                correction=record.get("correction"),
+                category=record.get("category"),
+                explanation=record.get("explanation"),
+                test_sentence=record.get("test_sentence"),
+                test_sentence_correction=record.get("test_sentence_correction"),
+            )
+            new_id = ''.join(str(random.randint(0, 9)) for _ in range(40))
+            response = response.replace("{new_rule_id}", f"BRIEFCATCH_{new_id}")
+            new_rule_name = f"BRIEFCATCH_{record.get('category').upper()}_{record.get('rule_number')}"
+            responses.append({
+                "rule_name": new_rule_name,
+                "rule": response,
+                "usage": usage
+            })
+        except Exception as e:
+            error_message = f"Error creating new rule: {e}"
+            logger.error(error_message)
+            logger.exception(e)
+            errors.append(error_message)
+            
+    status_code = 200 if responses else 500
+    return JSONResponse(content={"results": responses, "errors": errors}, status_code=status_code)
+
+
 @app.post("/ngram-analysis-suggestions")
 async def ngram_analysis_suggestions(input_data: NgramInput) -> JSONResponse:
     """
@@ -346,10 +403,10 @@ async def bulk_ngram_analysis(csv_file: UploadFile = File(...)) -> JSONResponse:
         df.dropna(inplace=True)
     except Exception as e:
         logger.error(e)
-        return JSONResponse(status_code=500, detail=f"Error reading CSV {str(e)}")
+        return JSONResponse(status_code=500, content=f"Error reading CSV {str(e)}")
 
     if '//Rule' not in df.columns and '//Correction' not in df.columns:
-        return JSONResponse(status_code=500, detail=f"Columns missing '//Correction' or '//Rule', current dataset has columns: {df.columns}")
+        return JSONResponse(status_code=500, content=f"Columns missing '//Correction' or '//Rule', current dataset has columns: {df.columns}")
 
     responses = []
     errors = []
