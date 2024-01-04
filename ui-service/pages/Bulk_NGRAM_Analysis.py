@@ -1,4 +1,6 @@
+import io
 import os
+import pandas as pd
 import requests
 import streamlit as st
 import toml
@@ -26,15 +28,29 @@ div.stButton > button:first-child {{ background-color: {primaryColor}; border-ra
 """
 st.markdown(s, unsafe_allow_html=True)
 
+st.header("Bulk NGRAM Analysis")
+
+
+def display_csv(uploaded_file) -> pd.DataFrame:
+    # Read the CSV file into a Pandas DataFrame
+    df = pd.read_csv(uploaded_file)
+    # Display the DataFrame as a table in Streamlit
+    st.write(df)
+    return df
+
 
 uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
 if uploaded_file is not None:
+    df = display_csv(uploaded_file)
     if st.button('Perform Analysis'):
         st.session_state['have_result'] = False
         st.session_state['ngram_analysis'] = [{}]
         with st.spinner('Performing bulk ngram analysis...'):
             try:
-                files = {'csv_file': (uploaded_file.name, uploaded_file, 'text/csv')}
+                csv_buffer = io.StringIO()
+                df.to_csv(csv_buffer, index=False)
+                csv_buffer.seek(0)
+                files = {'csv_file': (uploaded_file.name, csv_buffer, 'text/csv')}
                 response = requests.post(
                     f"{API_URL}/bulk-ngram-analysis",
                     files=files

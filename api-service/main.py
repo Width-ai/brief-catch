@@ -235,26 +235,32 @@ async def bulk_rule_rewriting(csv_file: UploadFile = File(...)) -> JSONResponse:
     rule_modifications = df.groupby('xml rule')
 
     for rule_id, modifications in rule_modifications:
+        logger.info(f"{rule_id=}")
+        logger.info(f"{modifications=}")
         try:
             original_rule_text, original_rule_name = fetch_rule_by_id(rule_id)
+            logger.info(f"fetching original rule {rule_id=}")
             modified_rule_text = original_rule_text
 
-            for _, modification in modifications.iterrows():
-                modified_rule_text, usage = rewrite_rule_helper(
-                    original_rule=modified_rule_text,
-                    target_element=modification['target element'],
-                    element_action=modification['action to take'],
-                    specific_actions=modification['specific actions']
-                )
+            if original_rule_text:
+                for _, modification in modifications.iterrows():
+                    modified_rule_text, usage = rewrite_rule_helper(
+                        original_rule=modified_rule_text,
+                        target_element=modification['target element'],
+                        element_action=modification['action to take'],
+                        specific_actions=modification['specific actions']
+                    )
 
-            modified_rule_text = modified_rule_text.replace("```xml\n", "").replace("\n```", "")
-
-            responses.append({
-                "original_rule_id": rule_id,
-                "original_rule_name": original_rule_name,
-                "response": modified_rule_text,
-                "usage": usage
-            })
+                modified_rule_text = modified_rule_text.replace("```xml\n", "").replace("\n```", "")
+                responses.append({
+                    "original_rule_id": rule_id,
+                    "original_rule_name": original_rule_name,
+                    "response": modified_rule_text,
+                    "usage": usage
+                })
+            else:
+                logger.error(f"No rule found for id {rule_id}")
+                errors.append(f"No rule found for id {rule_id}")
         except Exception as e:
             error_message = f"Error modifying rule ID {rule_id}: {e}"
             logger.error(error_message)

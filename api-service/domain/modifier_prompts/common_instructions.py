@@ -235,9 +235,9 @@ Expected Output: <rule id="BRIEFCATCH_311798533127983971246215325355996953264" n
 SYMBOL_REPLACEMENT = """In the <message>(….)</message> element of the code in the input, replace all “‚Äù” symbols with quotation marks, and all “‚Äî” symbols with a m-dash symbol. Leave all the '[' and ']' as is in the message element."""
 
 
-ADD_SHORT_TEMPLATE = """Add the below template to the modified rule, right below the last of the ‘</suggestion>’ tags in the code and above the first ‘<example’ tag in the code. Also replace the part reading ‘BRIEFCATCH_PUNCHINESS_847.2’ in the template with the second line of the input (without the ‘,’ symbol succeeding it). Also count the number of existing </suggestion> tags in the code in the input and replace the number ‘1’ behind ‘"correctionCount":’ in the below template with the number of suggestions you have counted in the code in the input following the given instructions.
+ADD_SHORT_TEMPLATE = """Below is a template to add to the modified rule. This short template will be added right below the last of the ‘</suggestion>’ tags in the rule and above the first ‘<example>’ tag in the rule. The only thing that should change is the number for the "correctionCount" value. This number will be the number of "<suggestion>" tags in the rule. Please update only this value in the "<short>" tag in the final modified rule.
 Template:  
-<short>{"ruleGroup":"BRIEFCATCH_PUNCHINESS_847.2","ruleGroupIdx":1,"isConsistency":false,"isStyle":true,"correctionCount":1,"priority":"5.223"}</short>   """
+<short>{"ruleGroup":null,"ruleGroupIdx":0,"isConsistency":true,"isStyle":true,"correctionCount":1,"priority":"5.1521","WORD":true,"OUTLOOK":true}</short>"""
 
 
 ELEMENT_ORDER_RULES = """The elements in the modified rule need to be in the following order: 
@@ -245,11 +245,11 @@ ELEMENT_ORDER_RULES = """The elements in the modified rule need to be in the fol
 1. ‘<rule(…)’ {rule opening tag} 
 2. <antipattern>(tokens)</antipattern> {all antipatterns one after another} 
 3. <pattern>tokens</pattern> {pattern} 
-4. <message>(…..)</message> {message} 
-5. <suggestion>(…..)</suggestion> {all suggestions one after another} 
-6. <short>(…..)</short> {short} 
-7. <example correction=”(….)”>(…..)</example> {example for the pattern} 
-8. <example>(….)</example> {all examples for antipatterns one after another} 
+4. <message>(...)</message> {message} 
+5. <suggestion>(...)</suggestion> {all suggestions one after another} 
+6. <short>(...)</short> {short} 
+7. <example correction=”(...)”>(...)</example> {example for the pattern} 
+8. <example>(...)</example> {all examples for antipatterns one after another} 
 9. “</rule>” {closing rule tag}"""
 
 
