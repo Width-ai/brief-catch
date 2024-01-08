@@ -1,10 +1,30 @@
+import json
+import pandas as pd
 import re
-from typing import List
+from typing import Dict, List
+from ast import literal_eval
+from copy import deepcopy
 from pattern.en import conjugate, PRESENT, PAST, PARTICIPLE, INFINITIVE, PROGRESSIVE, FUTURE, SG, PL
+from domain.ngram_prompts.prompts import (
+    SEGMENT_CREATION_SYSTEM_PROMPT,
+    IDENTIFY_PATTERNS_SYSTEM_PROMPT,
+    CONDENSE_CLUSTERS_SYSTEM_PROMPT,
+    CONDENSE_CLUSTERS_USER_TEMPLATE,
+    POS_TAGGING_SYSTEM_MESSAGE
+)
+from utils.logger import setup_logger
+from utils.utils import generate_simple_message, call_gpt_with_backoff, clean_json_output, extract_json_tags
 
+
+adhoc_logger = setup_logger(__name__)
 
 VERBS_THAT_NEED_HELP = ["center"]
-PARTS_OF_SPEECH = ["VB", "NNS", "JJ", "V.*?", "VBG", "NN", "NN:U", "NN:UN", "NNP", "PRP.*", "N.*?", "JJ.*?", "IN", "CC", "DT", "EX", "LS", "MD", "POS", "RB", "RBR", "RBS", "UH"]
+OTHER_VERBS_THAT_NEED_HELP = ["focus"]
+PARTS_OF_SPEECH = sorted(
+    ["VB", "NNS", "JJ", "V.*?", "VBG", "NN", "NN:U", "NN:UN", "NNP", "PRP.*", "N.*?", "JJ.*?", "IN", "CC", "DT", "EX", "LS", "MD", "POS", "RB", "RBR", "RBS", "UH"],
+    key=len,
+    reverse=True
+)
 PUNCTUATIONS = [",", ";", ":", ".", "!", "?", "-"]
 
 
@@ -46,9 +66,12 @@ def split_rule_into_tokens(rule_text: str) -> List[str]:
     return tokens
 
 
+
 def generate_verb_forms(verb: str) -> List[str]:
     if verb in VERBS_THAT_NEED_HELP:
         return [verb, f'{verb}ing', f'{verb}ed', f'{verb}s']
+    if verb in OTHER_VERBS_THAT_NEED_HELP:
+        return [verb, f'{verb}ing', f'{verb}ed', f'{verb}es']
     # Initialize a set to store unique verb forms
     verb_forms = set()
 
@@ -73,6 +96,7 @@ def generate_verb_forms(verb: str) -> List[str]:
     return list(verb_forms)
 
 
+
 def generate_verb_forms_regex(base_verb: str) -> str:
     verb_forms = generate_verb_forms(base_verb)
     # Escape any regex special characters in the verb forms
@@ -82,11 +106,13 @@ def generate_verb_forms_regex(base_verb: str) -> str:
     return regex_pattern
 
 
+
 def generate_excluded_words_pattern(excluded_words: List[str]) -> str:
     # Escape each word and join them into a regex alternation pattern
     excluded_pattern = '|'.join(map(re.escape, excluded_words))
     # Construct the negative lookahead pattern
     return r'(?!' + excluded_pattern + r'\b)'
+
 
 
 def generate_special_token_regex(token: str) -> str:
@@ -129,7 +155,8 @@ def generate_special_token_regex(token: str) -> str:
         return re.escape(token)
 
 
-def search_for_adhoc(adhoc_rule: str) -> List[str]:
+
+def create_regex_from_rule(adhoc_rule: str) -> List[str]:
     """
     Takes in an adhoc rule, splits the different tokens, then creates a regex to search for matches.
     """
@@ -172,6 +199,12 @@ def search_for_adhoc(adhoc_rule: str) -> List[str]:
                     # Handle special tokens or escape regular options
                     option_patterns.append(generate_special_token_regex(option))
             if excluded_words:
+                if options[0] == "VB":
+                    # conjugate verbs to exclude
+                    verbs_to_exclude = []
+                    for word in excluded_words:
+                        verbs_to_exclude.extend(generate_verb_forms(word))
+                    excluded_words = verbs_to_exclude
                 excluded_words_pattern = generate_excluded_words_pattern(excluded_words)
                 option_patterns = [
                     f"{excluded_words_pattern}{pattern}"
@@ -221,7 +254,7 @@ def create_correction_regex(rule_pattern: str, corrections: str) -> List[str]:
     Translate corrections into regex strings based on the rule it is associated with
     """
     # generate the tokens for the rule pattern
-    rule_pattern_tokens = search_for_adhoc(rule_pattern)
+    rule_pattern_tokens = create_regex_from_rule(rule_pattern)
     
     # split the correction pattern if multiple exist
     corrections = corrections.split("@")
@@ -251,3 +284,321 @@ def create_correction_regex(rule_pattern: str, corrections: str) -> List[str]:
         correction_patterns.append(process_pattern(' '.join(correction_pattern)))
     
     return correction_patterns
+
+
+
+def pos_tag(tokens: List[str]) -> List[str]:
+    """
+    Using GPT, tag the words given with their corresponding Parts of Speech. Returns a
+    list of tuples with the word followed by its tag:
+    
+    [("running", "VB"), ("Kevin", "NNP")]
+    """
+    messages = generate_simple_message(POS_TAGGING_SYSTEM_MESSAGE, str(tokens))
+    response, _ = call_gpt_with_backoff(messages=messages, model="gpt-3.5-turbo-1106", temperature=0)
+    pos_list = literal_eval(response)
+    return list(zip(tokens, pos_list))
+
+
+
+def find_optional_tokens(rule: str) -> List[Dict]:
+    """
+    Identifies any optional token in an adhoc rule and returns the index and the options
+    """
+    tokens = split_rule_into_tokens(rule)
+    optional_tokens = []
+    for token_index, token in enumerate(tokens):
+        if "~" in token:
+            options = token.replace("~", "").split()[1:-1]
+            optional_tokens.append({"index": token_index, "options": options})
+    return optional_tokens
+
+
+
+def filter_matches_on_pos_tag(rule: str, matches: List[Dict]) -> List[Dict]:
+    """
+    Filters matches from ngram to make sure they match the PoS tags provided in an adhoc rule
+
+    Returns a list of filtered matches
+    """
+    # if the rule starts with a regex pattern to match anything, remove this from the rule
+    # so that we can line up where the rest of the pattern matches in the ngram result
+    if rule.startswith("SENT_START"):
+        rule = rule[10:].strip()
+    if rule.startswith("RX(.*?)"):
+        rule = rule[7:].strip()
+
+    # split the rule into tokens to check if we need to identify a POS tag
+    rule_tokens = split_rule_into_tokens(rule)
+    # we dont need to treat punctuations as separate token in this function
+    rule_tokens = [token for token in rule_tokens if token not in PUNCTUATIONS]
+    tokens_to_check = []
+    for token_index, token in enumerate(rule_tokens):
+        for pos in PARTS_OF_SPEECH:
+            if pos in token:
+                tokens_to_check.append({"index": token_index, "pos": pos, "required": "~" not in token})
+                # Stop after the first (most specific) match
+                break
+
+    # if no tokens need to be checked, return all the matches
+    if not tokens_to_check:
+        return matches
+
+    # create a list of optional tokens, we will use this to adjust any indicies later if they are not present
+    optional_tokens = find_optional_tokens(rule)
+    
+    # start checking the matches
+    checked_matches = []
+    for match in matches:
+        # create a list of Parts of Speech for every word in the ngram match
+        ngram = match.get("ngram")
+        ngram_tokens = ngram.split()
+        pos_tags = pos_tag(ngram_tokens)
+        # create a copy of tokens_to_check for each match
+        temp_tokens_to_check = deepcopy(tokens_to_check)
+
+        # adjust indices if the match doesn't start at the same place as the pattern
+        regex_pattern = process_pattern(' '.join(create_regex_from_rule(rule)))
+        match_obj = re.search(regex_pattern, ngram)
+        token_start_index = 0
+        if match_obj:
+            span_start, _ = match_obj.span()
+            token_start_index = len(ngram[:span_start].split())
+            for token_being_checked in temp_tokens_to_check:
+                token_being_checked["index"] += token_start_index
+
+        # adjust indices for optional tokens
+        if optional_tokens:
+            for optional_token in optional_tokens:
+                index = optional_token.get("index")
+                options = optional_token.get("options")
+                # see if optional token present
+                if ngram_tokens[index + token_start_index] not in options:
+                    # optional token not present
+                    # decrement the indices of tokens to check that come after the optional token
+                    for token_being_checked in temp_tokens_to_check:
+                        if token_being_checked["index"] > index + token_start_index:
+                            token_being_checked["index"] -= 1
+
+        # check that all PoS tokens in the rule correspond to the match from ngram
+        if all((pos_tags[token_being_checked["index"]][1] == token_being_checked["pos"]) or
+               (not token_being_checked["required"] or
+                (".*?" in token_being_checked["pos"] and pos_tags[token_being_checked["index"]][1].startswith(token_being_checked["pos"][:-3])))
+               for token_being_checked in temp_tokens_to_check):
+            checked_matches.append(match)
+
+    return checked_matches
+
+
+
+def truncate_ngram_dataset(dataset: List[Dict], top_n=50) -> Dict:
+    """
+    Takes in ngram dataset and only keeps the top_n records based on score
+    """
+    # make the list of dictionary a single dictionary
+    dataset = {list(item.keys())[0]: item[list(item.keys())[0]] for item in dataset}
+    # flatten the dataset
+    flattened = []
+    for word_key, ngrams in dataset.items():
+        for ngram in ngrams:
+            try:
+                score = float(ngram['score'])
+                flattened.append((word_key, ngram['ngram'], score))
+            except ValueError:
+                adhoc_logger.error(f"Error converting score to float for '{ngram['ngram']}': {ngram['score']}")
+    
+    # sort by score in descending order
+    sorted_flattened = sorted(flattened, key=lambda x: x[2], reverse=True)
+    
+    # take the top_n records, or all records if there are less than top_n
+    top_records = sorted_flattened[:min(top_n, len(sorted_flattened))]
+    
+    # recreate the dataset with only the top records
+    top_dataset = {}
+    for word, ngram, score in top_records:
+        if word not in top_dataset:
+            top_dataset[word] = []
+        top_dataset[word].append({'ngram': ngram, 'score': str(score)})
+    
+    return top_dataset
+
+
+
+def rank_records_by_score(data: Dict) -> Dict:
+    # Check if 'reranking' is in the dictionary and is a list
+    for i, group in enumerate(data['reranking']):
+        data['reranking'][i] = sorted(group, key=lambda x: float(x['score']), reverse=True)
+    return data
+
+
+
+def ngram_helper_rule(rule_pattern: str) -> Dict:
+    """
+    Helper function to perform the ngram analysis on rule patterns
+    """
+    try:
+        search_pattern = " ".join(create_regex_from_rule(rule_pattern))
+        # load the csv with ngram data
+        df = pd.read_csv("data/Ngram Over 1 score.csv")
+        df.drop(columns=["Unnamed: 2", "Unnamed: 3", "Unnamed: 4"], inplace=True)
+        df.dropna(inplace=True)
+        
+        # search the ngram data for the different patterns
+        ngram_data = []
+        flags = []
+        clusters = []
+        usages = []
+        records = df[df['ngram'].str.contains(search_pattern)].to_dict(orient='records')
+
+        # filter results from ngram
+        records = filter_matches_on_pos_tag(rule_pattern, records)
+        if records:
+            ngram_data.append({rule_pattern: records})
+        else:
+            flags.append(rule_pattern)
+        
+        # drop any record not in the top n (default is 50)
+        ngram_data = truncate_ngram_dataset(ngram_data)
+        
+        if ngram_data:
+            # segment the results into groups with similar patterns
+            segment_messages = generate_simple_message(
+                system_prompt=SEGMENT_CREATION_SYSTEM_PROMPT,
+                user_prompt=json.dumps(ngram_data))
+            segment_output, segment_usage = call_gpt_with_backoff(
+                messages=segment_messages,
+                model="gpt-4-1106-preview",
+                temperature=0,
+                max_length=1240)
+            usages.append(segment_usage)
+            
+            cleaned_output = clean_json_output(segment_output)
+            
+            # remove any segement with just one record
+            cleaned_output['reranking'] = [item for item in cleaned_output['reranking'] if len(item) > 1]
+            
+            # sort the records in each group to be in order by score
+            ranked_groups = rank_records_by_score(cleaned_output)
+            pattern_messages = generate_simple_message(
+                system_prompt=IDENTIFY_PATTERNS_SYSTEM_PROMPT,
+                user_prompt=json.dumps(ranked_groups.get("reranking", [])))
+            pattern_output, pattern_usage = call_gpt_with_backoff(
+                messages=pattern_messages,
+                model="gpt-3.5-turbo",
+                temperature=0,
+                max_length=1983)
+            usages.append(pattern_usage)
+
+            cleaned_pattern_output = clean_json_output(pattern_output)
+            
+            # condense the clusters where patterns are alike
+            condensed_messages = generate_simple_message(
+                system_prompt=CONDENSE_CLUSTERS_SYSTEM_PROMPT,
+                user_prompt=CONDENSE_CLUSTERS_USER_TEMPLATE.replace(
+                    "{{cluster_dictionary}}", json.dumps(cleaned_pattern_output, indent=4)
+                ))
+            condensed_output, condense_usage = call_gpt_with_backoff(
+                messages=condensed_messages,
+                model="gpt-4-1106-preview",
+                temperature=0,
+                max_length=1600)
+            usages.append(condense_usage)
+            extracted_condensed_clusters = extract_json_tags(condensed_output)
+            clusters = clean_json_output(extracted_condensed_clusters)
+        return {
+            "clusters": clusters,
+            "flags": flags,
+            "usages": usages
+        }
+    except Exception as e:
+        adhoc_logger.error(f"Error clustering ngram data: {e}")
+        adhoc_logger.exception(e)
+        raise e
+
+
+
+def ngram_helper_suggestion(rule_pattern: str, suggestion_pattern: str) -> Dict:
+    """
+    Helper function to perform the ngram analysis on suggestion patterns
+    """
+    try:
+        suggestion_patterns = suggestion_pattern.split("@")
+        search_patterns = create_correction_regex(rule_pattern, suggestion_pattern)
+        # load the csv with ngram data
+        df = pd.read_csv("data/Ngram Over 1 score.csv")
+        df.drop(columns=["Unnamed: 2", "Unnamed: 3", "Unnamed: 4"], inplace=True)
+        df.dropna(inplace=True)
+        
+        # search the ngram data for the different patterns
+        ngram_data = []
+        flags = []
+        clusters = []
+        usages = []
+        for index, search_pattern in enumerate(search_patterns):
+            if search_pattern:
+                records = df[df['ngram'].str.contains(search_pattern)].to_dict(orient='records')
+                # filter results from ngram
+                records = filter_matches_on_pos_tag(search_pattern, records)
+                if records:
+                    ngram_data.append({suggestion_patterns[index].strip(): records})
+                else:
+                    flags.append(suggestion_patterns[index].strip())
+        
+        # drop any record not in the top n (default is 50)
+        ngram_data = truncate_ngram_dataset(ngram_data)
+        
+        if ngram_data:
+            # segment the results into groups with similar patterns
+            segment_messages = generate_simple_message(
+                system_prompt=SEGMENT_CREATION_SYSTEM_PROMPT,
+                user_prompt=json.dumps(ngram_data))
+            segment_output, segment_usage = call_gpt_with_backoff(
+                messages=segment_messages,
+                model="gpt-4-1106-preview",
+                temperature=0,
+                max_length=1279)
+            usages.append(segment_usage)
+            
+            cleaned_output = clean_json_output(segment_output)
+            
+            # remove any segement with just one record
+            cleaned_output['reranking'] = [item for item in cleaned_output['reranking'] if len(item) > 1]
+            
+            # sort the records in each group to be in order by score
+            ranked_groups = rank_records_by_score(cleaned_output)
+            pattern_messages = generate_simple_message(
+                system_prompt=IDENTIFY_PATTERNS_SYSTEM_PROMPT,
+                user_prompt=json.dumps(ranked_groups.get("reranking", [])))
+            pattern_output, pattern_usage = call_gpt_with_backoff(
+                messages=pattern_messages,
+                model="gpt-3.5-turbo",
+                temperature=0,
+                max_length=1983)
+            usages.append(pattern_usage)
+
+            cleaned_pattern_output = clean_json_output(pattern_output)
+            
+            # condense the clusters where patterns are alike
+            condensed_messages = generate_simple_message(
+                system_prompt=CONDENSE_CLUSTERS_SYSTEM_PROMPT,
+                user_prompt=CONDENSE_CLUSTERS_USER_TEMPLATE.replace(
+                    "{{cluster_dictionary}}", json.dumps(cleaned_pattern_output, indent=4)
+                )
+            )
+            condensed_output, condense_usage = call_gpt_with_backoff(
+                messages=condensed_messages,
+                model="gpt-4-1106-preview",
+                temperature=0,
+                max_length=1599)
+            usages.append(condense_usage)
+            extracted_condensed_clusters = extract_json_tags(condensed_output)
+            clusters = clean_json_output(extracted_condensed_clusters)
+        return {
+            "clusters": clusters,
+            "flags": flags,
+            "usages": usages
+        }
+    except Exception as e:
+        adhoc_logger.error(f"Error clustering ngram data: {e}")
+        adhoc_logger.exception(e)
+        raise e

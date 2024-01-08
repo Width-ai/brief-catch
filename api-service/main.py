@@ -12,10 +12,11 @@ from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import JSONResponse, StreamingResponse
 from typing import List, Dict
 from domain.prompts import TOPIC_SENTENCE_SYSTEM_PROMPT, QUOTATION_SYSTEM_PROMPT
-from domain.models import InputData, SentenceRankingInput, InputDataList, RuleInputData, UpdateRuleInput, CreateRuleInput, NgramInput, NgramAnalysis
+from domain.models import InputData, SentenceRankingInput, InputDataList, RuleInputData, UpdateRuleInput, CreateRuleInput, NgramInput
+from utils.adhoc_rule_search import ngram_helper_suggestion, ngram_helper_rule
 from utils.utils import generate_simple_message, call_gpt_with_backoff, setup_logger, rank_sentence, call_gpt3, \
     rewrite_parentheses_helper, rewrite_rule_helper, pull_xml_from_github, update_rule_helper, create_rule_helper, \
-    ngram_helper_suggestion, ngram_helper_rule, fetch_rule_by_id, create_df_from_analysis_data
+    fetch_rule_by_id, create_df_from_analysis_data
 
 logger = setup_logger(__name__)
 
@@ -395,6 +396,31 @@ async def ngram_analysis_rule(input_data: NgramInput) -> JSONResponse:
     except Exception as e:
         logger.error(e)
         return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
+@app.post("/ngram-analysis")
+async def ngram_analysis(input_data: InputData) -> JSONResponse:
+    """
+    Take in the rule and perform both analysis on it
+    """
+    rule_parts = input_data.input_text.split("\n")
+    if len(rule_parts) == 2:
+        rule_pattern = rule_parts[0]
+        suggestion_pattern = rule_parts[1]
+        pattern_analysis = {}
+        suggestion_analysis = {}
+        try:
+            pattern_analysis = ngram_helper_rule(rule_pattern)
+        except Exception as e:
+            logger.error(f"Error analysing rule pattern {rule_pattern}: {e}")
+            logger.exception(e)
+        try:
+            suggestion_analysis = ngram_helper_suggestion(rule_pattern, suggestion_pattern)
+        except Exception as e:
+            logger.error(f"Error analysing suggestion pattern {suggestion_pattern}: {e}")
+            logger.exception(e)
+        return JSONResponse(content={"pattern_analysis": pattern_analysis, "suggestion_analysis": suggestion_analysis})
+    return JSONResponse(content={"response": "Incorrect rule submitted, please check that it is separated into two lines"}, status_code=500)
 
 
 @app.post("/bulk-ngram-analysis")

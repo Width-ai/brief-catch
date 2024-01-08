@@ -1,3 +1,14 @@
+POS_TAGGING_SYSTEM_MESSAGE = """You are an expert at Part of Speech Tagging. Using conventional abbreviations, return a corresponding list of Parts of Speech for the input tokens
+
+Here is an example for your guidance, follow the output format exactly
+
+Input:
+['they', 'really', 'tend', 'to', 'run']
+Output:
+['PRP', 'RB', 'VBP', 'TO', 'VB']"""
+
+
+
 SEGMENT_CREATION_SYSTEM_PROMPT = """You are a state of the art system at pattern recognition. You will receive data that has been parsed from a data dump from ngram. You will be grouping this ngram data into three groups based on shared patterns that you find amongst the data.
 
 Here are some rules that you must follow:
