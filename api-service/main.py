@@ -236,11 +236,8 @@ async def bulk_rule_rewriting(csv_file: UploadFile = File(...)) -> JSONResponse:
     rule_modifications = df.groupby('xml rule')
 
     for rule_id, modifications in rule_modifications:
-        logger.info(f"{rule_id=}")
-        logger.info(f"{modifications=}")
         try:
             original_rule_text, original_rule_name = fetch_rule_by_id(rule_id)
-            logger.info(f"fetching original rule {rule_id=}")
             modified_rule_text = original_rule_text
 
             if original_rule_text:

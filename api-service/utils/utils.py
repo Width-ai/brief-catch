@@ -20,7 +20,7 @@ from domain.prompts import (
 )
 from domain.models import RuleToUpdate
 from domain.modifier_prompts import RULE_USER_TEXT_TEMPLATE
-from domain.modifier_prompts.common_instructions import STANDARD_PROMPT
+from domain.modifier_prompts.common_instructions import STANDARD_PROMPT, OPTIMIZED_STANDARD_PROMPT
 from utils.logger import setup_logger
 
 pricing = json.load(open("pricing.json"))
@@ -278,7 +278,7 @@ def rewrite_rule_helper(original_rule: str, target_element: str, element_action:
     Calls GPT with the corresponding system prompt and the user text formatted
     """
     # get correct system prompt
-    action_system_prompt = STANDARD_PROMPT
+    action_system_prompt = OPTIMIZED_STANDARD_PROMPT
 
     # format user text
     user_text = RULE_USER_TEXT_TEMPLATE.replace("{{origininal_rule_text}}", original_rule)
@@ -288,7 +288,7 @@ def rewrite_rule_helper(original_rule: str, target_element: str, element_action:
     
     messages = generate_simple_message(system_prompt=action_system_prompt, user_prompt=user_text)
 
-    return call_gpt_with_backoff(messages=messages, model="gpt-4-1106-preview", temperature=0, max_length=1200)
+    return call_gpt_with_backoff(messages=messages, model="gpt-4-1106-preview", temperature=0, max_length=1500)
 
 
 def create_new_branch(repo: Repository, branch_name: str):
