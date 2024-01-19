@@ -7,7 +7,6 @@ from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pattern.en import conjugate, PRESENT, PAST, PARTICIPLE, INFINITIVE, PROGRESSIVE, FUTURE, SG, PL
 from domain.ngram_prompts.prompts import (
-    SEGMENT_CREATION_SYSTEM_PROMPT,
     OPTIMIZED_GROUPING_PROMPT,
     OPTIMIZED_GROUPING_FOLLOW_UP,
     POS_TAGGING_SYSTEM_MESSAGE
@@ -540,12 +539,12 @@ def ngram_helper_rule(rule_pattern: str) -> Dict:
             # segment the results into groups with similar patterns
             grouping_messages = generate_simple_message(
                 system_prompt=OPTIMIZED_GROUPING_PROMPT,
-                user_prompt=json.dumps(ngram_data, indent=4))
+                user_prompt=json.dumps(ngram_data))
             grouping_output, grouping_usage = call_gpt_with_backoff(
                 messages=grouping_messages,
                 model="gpt-4-1106-preview",
                 temperature=0,
-                max_length=1301)
+                max_length=1500)
             usages.append(grouping_usage)
             grouping_messages.append({"role": "assistant", "content": grouping_output})
             grouping_messages.append({"role": "user", "content": OPTIMIZED_GROUPING_FOLLOW_UP})
@@ -608,7 +607,7 @@ def ngram_helper_suggestion(rule_pattern: str, suggestion_pattern: str) -> Dict:
             # segment the results into groups with similar patterns
             grouping_messages = generate_simple_message(
                 system_prompt=OPTIMIZED_GROUPING_PROMPT,
-                user_prompt=json.dumps(ngram_data, indent=4))
+                user_prompt=json.dumps(ngram_data))
             grouping_output, grouping_usage = call_gpt_with_backoff(
                 messages=grouping_messages,
                 model="gpt-4-1106-preview",
