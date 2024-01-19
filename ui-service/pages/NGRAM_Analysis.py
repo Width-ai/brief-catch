@@ -36,7 +36,7 @@ if submit_button:
         try:
             ngram_analysis = requests.post(
                 f"{API_URL}/ngram-analysis",
-                json={"rule_text": text_input}
+                json={"input_text": text_input}
             )
             ngram_analysis.raise_for_status()
             response_data = ngram_analysis.json()

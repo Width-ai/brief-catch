@@ -211,15 +211,13 @@ XML Rule:
 <rule id="{new_rule_id}" name="BRIEFCATCH_FLOW_30136">
     <pattern>
         <token postag="SENT_START"/>
-        <marker>
-            <token>in</token>
-            <token>that</token>
-            <token>case</token>
-            <token>,</token>
-            <token regexp="yes">however|though</token>
-            <token>,</token>
-            <token regexp="yes">he|i|if|in|it|she|there|this</token>
-        </marker>
+        <token>in</token>
+        <token>that</token>
+        <token>case</token>
+        <token>,</token>
+        <token regexp="yes">however|though</token>
+        <token>,</token>
+        <token regexp="yes">he|i|if|in|it|she|there|this</token>
     </pattern>
     <message>Could shortening your opening transition add punch and help lighten the style?|**Example** from Chief Justice Roberts: “**But** that argument . . . confuses mootness with the merits.”</message>
     <suggestion>But <match no="8"/></suggestion>

@@ -4,25 +4,23 @@ import math
 import openai
 import os
 import pandas as pd
+import pinecone
 import re
 import tiktoken
-from lxml import etree
 from collections import defaultdict
-from github import Github, Repository
+from github import Github, Repository, GithubException
+from lxml import etree
 from typing import List, Tuple, Dict
+from uuid import uuid4
+from word_embeddings_sdk import WordEmbeddingsSession
 from domain.prompts import (
     SENTENCE_RANKING_SYSTEM_PROMPT,
     PARENTHESES_REWRITING_PROMPT,
     CREATE_RULE_FROM_ADHOC_SYSTEM_PROMPT
 )
+from domain.models import RuleToUpdate
 from domain.modifier_prompts import RULE_USER_TEXT_TEMPLATE
-from domain.modifier_prompts.common_instructions import STANDARD_PROMPT
-from domain.ngram_prompts.prompts import (
-    SEGMENT_CREATION_SYSTEM_PROMPT,
-    IDENTIFY_PATTERNS_SYSTEM_PROMPT,
-    CONDENSE_CLUSTERS_SYSTEM_PROMPT,
-    CONDENSE_CLUSTERS_USER_TEMPLATE
-)
+from domain.modifier_prompts.common_instructions import STANDARD_PROMPT, OPTIMIZED_STANDARD_PROMPT
 from utils.logger import setup_logger
 
 pricing = json.load(open("pricing.json"))
@@ -30,7 +28,10 @@ utils_logger = setup_logger(__name__)
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 GITHUB_REPO = os.getenv("GITHUB_REPO")
 FILENAME = os.getenv("RULE_FILENAME", "grammar.xml")
-
+session = WordEmbeddingsSession(
+    customer_id=os.getenv("EMBEDDINGS_SAAS_ID"),
+    api_key=os.getenv("EMBEDDINGS_SAAS_API_KEY"))
+pinecone_indexes = {}
 
 
 
@@ -261,12 +262,23 @@ def pull_xml_from_github() -> Dict:
         return None
 
 
+def fetch_rule_by_id(rule_id: str) -> Tuple[str, str]:
+    """
+    Search for rule by given ID, this is not the long form ID in the rule, but the short id in the name
+    """
+    rule_dict = pull_xml_from_github()
+    for rule_name in rule_dict.keys():
+        if rule_name.endswith(f"_{rule_id}"):
+            return rule_dict.get(rule_name), rule_name
+    return None, ""
+
+
 def rewrite_rule_helper(original_rule: str, target_element: str, element_action: str, specific_actions: List[str] = []) -> Tuple[str, Dict]:
     """
     Calls GPT with the corresponding system prompt and the user text formatted
     """
     # get correct system prompt
-    action_system_prompt = STANDARD_PROMPT
+    action_system_prompt = OPTIMIZED_STANDARD_PROMPT
 
     # format user text
     user_text = RULE_USER_TEXT_TEMPLATE.replace("{{origininal_rule_text}}", original_rule)
@@ -276,7 +288,7 @@ def rewrite_rule_helper(original_rule: str, target_element: str, element_action:
     
     messages = generate_simple_message(system_prompt=action_system_prompt, user_prompt=user_text)
 
-    return call_gpt_with_backoff(messages=messages, model="gpt-4-1106-preview", temperature=0, max_length=1200)
+    return call_gpt_with_backoff(messages=messages, model="gpt-4-1106-preview", temperature=0, max_length=1500)
 
 
 def create_new_branch(repo: Repository, branch_name: str):
@@ -291,8 +303,27 @@ def create_new_branch(repo: Repository, branch_name: str):
         utils_logger.exception(e)
 
 
+def create_unique_branch(repo: Repository, base_branch_name: str) -> str:
+    """
+    Creates a new branch with a unique name by appending a number if needed.
+    """
+    branch_name = base_branch_name
+    counter = 1
+    while True:
+        try:
+            repo.get_branch(branch_name)
+            # If the branch exists, append/increment the counter and try again
+            branch_name = f"{base_branch_name}_{counter}"
+            counter += 1
+        except GithubException:
+            # If the branch does not exist, we can use this name
+            break
+    create_new_branch(repo=repo, branch_name=branch_name)
+    return branch_name
 
-def update_rule_helper(modified_rule_name: str, modified_rule: str) -> str:
+
+
+def update_rule_helper(rules_to_update: List[RuleToUpdate]) -> str:
     """
     Updates a rule in the grammar.xml file and creates a pull request
     """
@@ -305,23 +336,37 @@ def update_rule_helper(modified_rule_name: str, modified_rule: str) -> str:
         rules_dict = parse_rules_from_xml(xml_content)
         
         # update the rule
-        rules_dict[modified_rule_name] = modified_rule
+        if len(rules_to_update) == 1:
+            if rules_to_update[0].modified_rule_name in rules_dict.keys():
+                BRANCH_NAME = f"update_rule/{rules_to_update[0].modified_rule_name}"
+                pr_message = f"Update {rules_to_update[0].modified_rule_name}"
+                pr_body = f"This is an automatically generated PR to update {rules_to_update[0].modified_rule_name}"
+            else:
+                BRANCH_NAME = f"create_rule/{rules_to_update[0].modified_rule_name}"
+                pr_message = f"Create {rules_to_update[0].modified_rule_name}"
+                pr_body = f"This is an automatically generated PR to create {rules_to_update[0].modified_rule_name}"
+        else:
+            BRANCH_NAME = "batch_update"
+            pr_message = f"Update {len(rules_to_update)} rules"
+            pr_body = f"This is an automatically generated PR to update {len(rules_to_update)} rules"
+
+
+        for rule in rules_to_update:
+            rules_dict[rule.modified_rule_name] = rule.modified_rule
+
         new_rule_file = "\n".join(rules_dict.values())
 
-        BRANCH_NAME = f"update_rule/{modified_rule_name}"
-        create_new_branch(repo=repo, branch_name=BRANCH_NAME)
+        BRANCH_NAME = create_unique_branch(repo, BRANCH_NAME)
         update_file = repo.update_file(
             path=FILENAME, 
-            message=f"Update {modified_rule_name}",
+            message=pr_message,
             content=new_rule_file,
             sha=file_content.sha, 
             branch=BRANCH_NAME
         )
 
-        pr_title = f"Update {modified_rule_name}"
-        pr_body = f"This is an automatically generated PR to update {modified_rule_name}"
         pr_base = "main"
-        pull_request = repo.create_pull(title=pr_title, body=pr_body, head=BRANCH_NAME, base=pr_base)
+        pull_request = repo.create_pull(title=pr_message, body=pr_body, head=BRANCH_NAME, base=pr_base)
 
         return pull_request.html_url
     except Exception as e:
@@ -398,61 +443,114 @@ def extract_json_tags(input_text: str) -> str:
     return extracted_text.strip()
 
 
-def rank_records_by_score(data: Dict) -> Dict:
-    # Check if 'reranking' is in the dictionary and is a list
-    for i, group in enumerate(data['reranking']):
-        data['reranking'][i] = sorted(group, key=lambda x: float(x['score']), reverse=True)
-    return data
+def clean_json_output(raw_output: str) -> Dict:
+    """
+    Clean JSON output from GPT and load as dictionary
+    """
+    return json.loads(
+        remove_thought_tags(raw_output).replace(
+            "```json", ""
+        ).replace("```", "").strip()
+    )
 
 
-def ngram_helper(rule_text: str) -> Dict:
+def get_pinecone_index(index_name: str) -> pinecone.Index:
     """
-    Helper function to perform the ngram analysis
+    Function to get pinecone index from cache or create new one
     """
-    # pull the suggestions from the rule text
-    extracted_words = extract_suggestion_words(rule_text)
-    # load the csv with ngram data
-    df = pd.read_csv("data/Ngram Over 1 score.csv")
-    df.drop(columns=["Unnamed: 2", "Unnamed: 3", "Unnamed: 4"], inplace=True)
-    ngram_data = [
-        {
-            extracted_word: df[df['ngram'].str.contains(r'\b{}\b'.format(re.escape(extracted_word)), na=False, case=False, regex=True)].to_dict(orient='records')
-        }
-        for extracted_word in extracted_words
-    ]
-    segment_messages = generate_simple_message(
-        system_prompt=SEGMENT_CREATION_SYSTEM_PROMPT,
-        user_prompt=json.dumps(ngram_data))
-    segment_output, segment_usage = call_gpt_with_backoff(
-        messages=segment_messages,
-        model="gpt-4-1106-preview",
-        temperature=0,
-        max_length=1240)
-    cleaned_output = json.loads(remove_thought_tags(segment_output).strip())
-    # remove any segement with just one record
-    cleaned_output['reranking'] = [item for item in cleaned_output['reranking'] if len(item) > 1]
-    # sort the records in each group to be in order by score
-    ranked_groups = rank_records_by_score(cleaned_output)
-    pattern_messages = generate_simple_message(
-        system_prompt=IDENTIFY_PATTERNS_SYSTEM_PROMPT,
-        user_prompt=json.dumps(ranked_groups.get("reranking", [])))
-    pattern_output, pattern_usage = call_gpt_with_backoff(
-        messages=pattern_messages,
-        model="gpt-4-1106-preview",
-        temperature=0,
-        max_length=1045)
-    # condense the clusters where patterns are alike
-    condensed_messages = generate_simple_message(
-        system_prompt=CONDENSE_CLUSTERS_SYSTEM_PROMPT,
-        user_prompt=CONDENSE_CLUSTERS_USER_TEMPLATE.replace("{{cluster_dictionary}}", pattern_output))
-    condensed_output, condense_usage = call_gpt_with_backoff(
-        messages=condensed_messages,
-        model="gpt-4-1106-preview",
-        temperature=0,
-        max_length=1600)
-    extracted_condensed_clusters = extract_json_tags(condensed_output)
-    return {
-        "clusters": json.loads(extracted_condensed_clusters),
-        "flags": ranked_groups.get("flags", []),
-        "usages": [segment_usage, pattern_usage, condense_usage]
-    }
+    if index_name not in pinecone_indexes:
+        pinecone.init(api_key=str(os.getenv("PINECONE_API_KEY")), environment=str(os.getenv("PINECONE_ENV")))
+        pinecone_indexes[index_name] = pinecone.Index(index_name)
+    return pinecone_indexes[index_name]
+
+
+def get_embeddings(sentences: List[str], keep_alive: bool = False) -> List:
+    """
+    Call embeddings service, returns embeddings if successful or raises error
+    """
+    if keep_alive:
+        session.keep_alive(
+            model_id=os.getenv("EMBEDDINGS_SAAS_MODEL_ID"),
+            model_version_id=os.getenv("EMBEDDINGS_SAAS_MODEL_VERSION_ID")
+        )
+    return session.inference(
+        model_id=os.getenv("EMBEDDINGS_SAAS_MODEL_ID"),
+        model_version_id=os.getenv("EMBEDDINGS_SAAS_MODEL_VERSION_ID"),
+        input_texts=sentences
+    )
+
+
+def insert_into_pinecone(
+    index_name: str,
+    namespace: str,
+    records: List[dict],
+    keep_alive: bool = False,
+):
+    """
+    Insert records into pinecone with a schema of
+    {"id": "", "embedded_value": "", "full_input": "", "expected_output": ""}
+    """
+    index = get_pinecone_index(index_name=index_name)
+    for record in records:
+        if not record.get("embedded_value", ""):
+            utils_logger.warning("No value found for embeddings, passing empty string")
+        index.upsert(
+            vectors=[(
+                record.get("id", str(uuid4())),
+                get_embeddings([record.get("embedded_value", "")], keep_alive)[0],
+                {
+                    "full_input": record.get("full_input", ""),
+                    "expected_output": record.get("expected_output")
+                }
+            )],
+            namespace=namespace
+        )
+
+
+def search_pinecone_index(
+    index_name: str,
+    namespace: str,
+    search_param: str,
+    num_results: int,
+    threshold: float,
+    keep_embeddings_alive: bool = False,
+) -> List[dict]:
+    """
+    Function to search correct pinecone index
+    """
+    # load index
+    index = get_pinecone_index(index_name=index_name)
+
+    # get total number of vectors from pinecone to fix out of bounds error
+    TOTAL_NUM_VECTORS = index.describe_index_stats()['total_vector_count']
+    if num_results > TOTAL_NUM_VECTORS:
+        num_results = TOTAL_NUM_VECTORS
+
+    query_em = get_embeddings([search_param], keep_embeddings_alive)[0]
+
+    try:
+        result = index.query(query_em, namespace=namespace, top_k=num_results, includeMetadata=True)
+
+        # iterate through and only return the results that are within the set threshold
+        return [
+            match['metadata']
+            for match in result['matches']
+            if match['score'] >= threshold
+        ]
+    except Exception as e:
+        setup_logger(__name__).error(f"Error querying pinecone: {e}")
+        return []
+
+
+def create_df_from_analysis_data(data: List, data_type: str) -> pd.DataFrame:
+    if data_type == 'clusters':
+        # Assuming 'clusters' contains a list of dicts with 'pattern' and 'values'
+        flattened_data = []
+        for cluster in data:
+            for value in cluster['values']:
+                flattened_data.append({'pattern': cluster['pattern'], **value})
+        return pd.DataFrame(flattened_data)
+    elif data_type == 'usages':
+        return pd.DataFrame(data)
+    else:  # flags or other types
+        return pd.DataFrame(data, columns=['flags'])
