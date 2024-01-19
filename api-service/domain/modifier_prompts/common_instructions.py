@@ -303,7 +303,7 @@ OPTIMIZED_STANDARD_PROMPT = """You will be given a rule, an element type to modi
 - Punctuation is its own token.
 - Possessives are chunked as tokens splitting at the punctuation mark. So in Ross's, "Ross" is one token, "'s" is the second token. In Business', "Business" is one token, "'" is the second token.
 - An open token, which is indicated with ‘RX(.*?)’ is coded as <token/>. If you are told to generate a token for a pattern like `( RX(.*? ) !apples !bananas !grapes )`, that would translate to:
-    <token regexp="yes"><exception regexp="yes">apples|banans|grapes</exception></token>
+    <token><exception regexp="yes">apples|banans|grapes</exception></token>
 
 For example, with the input: There (is was) a fight.  
 The output would be: 

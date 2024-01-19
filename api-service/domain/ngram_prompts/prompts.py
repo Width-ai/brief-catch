@@ -351,3 +351,35 @@ First generate a analysis of what patterns you see, what can be combined and wha
 
 Remember, deep analysis and there might be little nuances, look out for them, and uncover all the hidden patterns. Generate arguments for yourself on what should be done, analyze globally then take a local closer look. Understand that there are deeply hidden patterns, ponder on the hidden patterns. Try to find them, there might be tricks.
 """
+
+
+
+
+OPTIMIZED_GROUPING_PROMPT = """Here is a list of patterns and records from a dataset where the field 'ngram' matched the pattern. Identify some ways we could group similar records from this list. For instance, if given the pattern "CT(sleep) JJ" some matches might be 
+[
+  {
+    'CT(sleep) JJ': [
+      {'ngram': 'sleep soundly', 'score': '2.0'},
+      {'ngram': 'he slept long', 'score': '2.6'},
+      {'ngram': 'i slept poor last night', 'score': '1.9'},
+      {'ngram': 'If you slept better,', 'score': '1.75'},
+      {'ngram': 'I should sleep earlier,', 'score': '1.75'}
+    ]
+  }
+]
+
+we could then identify patterns like:
+(a) "PRP CT(sleep) JJ" which matches phrases like "he slept long" and "I slept poor last night" and "if you sleep better"
+(b) "CT(sleep) JJ" which just matches "sleep soundly"
+(c) "PRP MD CT(sleep) JJ" which just matches "i should sleep earlier"
+"""
+
+OPTIMIZED_GROUPING_FOLLOW_UP = """using these groups, return a List of JSON objects where each object has the field "pattern" that contains the group pattern and then a list "values" that has all of the matches and their scores for that particular group. Surround the JSON object like this:
+
+<JSON>
+[
+  {
+    ...
+  }
+]
+</JSON>"""
