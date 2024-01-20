@@ -343,6 +343,20 @@ def rewrite_rule_helper(
     )
 
 
+def resolve_alias_in_suggestion(rule_xml):
+    suggestion_tag_pattern = r"<suggestion>.*?</suggestion>"
+    suggest_tags = re.findall(suggestion_tag_pattern, rule_xml)
+    for old_suggest in suggest_tags:
+        pattern = r"\\\b([1-9][0-9]?|100)\b"
+        # print(1, old_suggest)
+        new_suggest = re.sub(
+            pattern, lambda x: f"""<match no="{x[0][1:]}"/>""", old_suggest
+        )
+        rule_xml = rule_xml.replace(old_suggest, new_suggest)
+        # print(2, new_suggest)
+    return rule_xml
+
+
 def create_new_branch(repo: Repository, branch_name: str):
     """
     Tries to create a branch, if it already exists logs a warning
