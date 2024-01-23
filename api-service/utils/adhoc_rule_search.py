@@ -1,21 +1,22 @@
 import json
 import pandas as pd
 import re
-from typing import Dict, List
-from ast import literal_eval
+import spacy
+from typing import Dict, List, Tuple
 from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pattern.en import conjugate, PRESENT, PAST, PARTICIPLE, INFINITIVE, PROGRESSIVE, FUTURE, SG, PL
 from domain.ngram_prompts.prompts import (
     OPTIMIZED_GROUPING_PROMPT,
-    OPTIMIZED_GROUPING_FOLLOW_UP,
-    POS_TAGGING_SYSTEM_MESSAGE
+    OPTIMIZED_GROUPING_FOLLOW_UP
 )
 from utils.logger import setup_logger
 from utils.utils import generate_simple_message, call_gpt_with_backoff, extract_json_tags
 
 
 adhoc_logger = setup_logger(__name__)
+
+nlp = spacy.load("en_core_web_sm")
 
 VERBS_THAT_NEED_HELP = ["center"]
 OTHER_VERBS_THAT_NEED_HELP = ["focus"]
@@ -286,17 +287,19 @@ def create_correction_regex(rule_pattern: str, corrections: str) -> List[str]:
 
 
 
-def pos_tag(tokens: List[str]) -> List[str]:
+def pos_tag(input_sentence: str) -> List[Tuple[str, str]]:
     """
-    Using GPT, tag the words given with their corresponding Parts of Speech. Returns a
+    Using spaCy, tag the words given with their corresponding Parts of Speech. Returns a
     list of tuples with the word followed by its tag:
     
     [("running", "VB"), ("Kevin", "NNP")]
     """
-    messages = generate_simple_message(POS_TAGGING_SYSTEM_MESSAGE, str(tokens))
-    response, _ = call_gpt_with_backoff(messages=messages, model="gpt-3.5-turbo-1106", temperature=0)
-    pos_list = literal_eval(response)
-    return list(zip(tokens, pos_list))
+    token_tags = []
+    tokens = []
+    for token in nlp(input_sentence):
+        tokens.append(token.text)
+        token_tags.append(token.tag_)
+    return list(zip(tokens, token_tags))
 
 
 
@@ -322,7 +325,7 @@ def _process_match(rule: str, tokens_to_check: List[Dict], optional_tokens: List
     ngram = match.get("ngram")
     ngram_tokens = ngram.split()
     # tag each token in the match text
-    pos_tags = pos_tag(ngram_tokens)
+    pos_tags = pos_tag(ngram)
     temp_tokens_to_check = deepcopy(tokens_to_check)
 
     # create a regex pattern to line up where the rule needs to evaluate the match text
@@ -544,7 +547,7 @@ def ngram_helper_rule(rule_pattern: str) -> Dict:
                 messages=grouping_messages,
                 model="gpt-4-1106-preview",
                 temperature=0,
-                max_length=1500)
+                max_length=1750)
             usages.append(grouping_usage)
             grouping_messages.append({"role": "assistant", "content": grouping_output})
             grouping_messages.append({"role": "user", "content": OPTIMIZED_GROUPING_FOLLOW_UP})
@@ -552,7 +555,7 @@ def ngram_helper_rule(rule_pattern: str) -> Dict:
                 messages=grouping_messages,
                 model="gpt-4-1106-preview",
                 temperature=0,
-                max_length=1301)
+                max_length=1750)
             usages.append(clusters_usage)
             cleaned_cluster_output = extract_json_tags(clusters_output)
             clusters = json.loads(cleaned_cluster_output)
@@ -562,7 +565,7 @@ def ngram_helper_rule(rule_pattern: str) -> Dict:
             "usages": usages
         }
     except Exception as e:
-        adhoc_logger.error(f"Error clustering ngram data: {e}")
+        adhoc_logger.error(f"Error clustering ngram data for pattern: {e}")
         adhoc_logger.exception(e)
         raise e
 
@@ -612,7 +615,7 @@ def ngram_helper_suggestion(rule_pattern: str, suggestion_pattern: str) -> Dict:
                 messages=grouping_messages,
                 model="gpt-4-1106-preview",
                 temperature=0,
-                max_length=1301)
+                max_length=1750)
             usages.append(grouping_usage)
             grouping_messages.append({"role": "assistant", "content": grouping_output})
             grouping_messages.append({"role": "user", "content": OPTIMIZED_GROUPING_FOLLOW_UP})
@@ -620,7 +623,7 @@ def ngram_helper_suggestion(rule_pattern: str, suggestion_pattern: str) -> Dict:
                 messages=grouping_messages,
                 model="gpt-4-1106-preview",
                 temperature=0,
-                max_length=1301)
+                max_length=1750)
             usages.append(clusters_usage)
             cleaned_cluster_output = extract_json_tags(clusters_output)
             clusters = json.loads(cleaned_cluster_output)
@@ -630,6 +633,6 @@ def ngram_helper_suggestion(rule_pattern: str, suggestion_pattern: str) -> Dict:
             "usages": usages
         }
     except Exception as e:
-        adhoc_logger.error(f"Error clustering ngram data: {e}")
+        adhoc_logger.error(f"Error clustering ngram data for suggestion: {e}")
         adhoc_logger.exception(e)
         raise e
