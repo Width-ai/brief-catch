@@ -24,7 +24,7 @@ primaryColor = toml.load(".streamlit/config.toml")['theme']['primaryColor']
 s = f"""
 <style>
 div.stButton > button:first-child {{ background-color: {primaryColor}; border-radius: 5px; color: #fff;}}
-<style>
+</style>
 """
 st.markdown(s, unsafe_allow_html=True)
 
