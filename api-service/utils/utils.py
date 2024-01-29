@@ -437,11 +437,17 @@ def extract_json_tags(input_text: str) -> str:
     Extracts the text between the JSON tags
     """
     json_pattern = r'<JSON>.*?</JSON>'
-    extracted_text = re.findall(json_pattern, input_text, flags=re.DOTALL)[0]
-    extracted_text = extracted_text.replace("<JSON>", "")
-    extracted_text = extracted_text.replace("</JSON>", "")
-    return extracted_text.strip()
-
+    extracted_text = re.findall(json_pattern, input_text, flags=re.DOTALL)
+    if extracted_text:
+        extracted_text = extracted_text[0].replace("<JSON>", "")
+        extracted_text = extracted_text.replace("</JSON>", "")
+        return extracted_text.strip()
+    
+    utils_logger.warning(f"no JSON tag pattern detected, doing fallback. {input_text=}")
+    pattern = ".*?<JSON>"
+    new_str = re.sub(pattern, "", input_text, count=1)
+    new_str = new_str.replace("</JSON>", "")
+    return new_str
 
 def clean_json_output(raw_output: str) -> Dict:
     """
