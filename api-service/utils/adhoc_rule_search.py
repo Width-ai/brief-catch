@@ -5,7 +5,7 @@ import spacy
 from typing import Dict, List, Tuple
 from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from pattern.en import conjugate, PRESENT, PAST, PARTICIPLE, INFINITIVE, PROGRESSIVE, FUTURE, SG, PL
+from pattern.en import conjugate, lemma, PRESENT, PAST, PARTICIPLE, INFINITIVE, PROGRESSIVE, FUTURE, SG, PL
 from domain.ngram_prompts.prompts import (
     OPTIMIZED_GROUPING_PROMPT,
     OPTIMIZED_GROUPING_FOLLOW_UP
@@ -21,11 +21,99 @@ nlp = spacy.load("en_core_web_sm")
 VERBS_THAT_NEED_HELP = ["center"]
 OTHER_VERBS_THAT_NEED_HELP = ["focus"]
 PARTS_OF_SPEECH = sorted(
-    ["VB", "NNS", "JJ", "V.*?", "VBG", "NN", "NN:U", "NN:UN", "NNP", "PRP.*", "N.*?", "JJ.*?", "IN", "CC", "DT", "EX", "LS", "MD", "POS", "RB", "RBR", "RBS", "UH"],
+    ["VB", "NNS", "JJ", "V.*?", "VBG", "VBN", "VBD", "VBZ", "VBP", "NN", "NN:U", "NN:UN", "NNP", "PRP.*", "N.*?", "JJ.*?", "IN", "CC", "DT", "EX", "LS", "MD", "POS", "RB", "RBR", "RBS", "UH"],
     key=len,
     reverse=True
 )
 PUNCTUATIONS = [",", ";", ":", ".", "!", "?", "-"]
+
+
+
+def conjugate_verb_from_base(verb: str, form: str) -> str:
+    """
+    Given the base form of a verb and the PoS tag of the desired form, conjugate the verb into the correct form
+    """
+    # Special cases for irregular verbs (library uses British English sometimes)
+    if verb in ["center"]:
+        if form == "VBG":
+            return f'{verb}ing'
+        elif form == "VBD" or form == "VBN":
+            return f'{verb}ed'
+        elif form == "VBZ":
+            return f'{verb}s'
+        else:
+            # Base form or VBP for non-3rd ps. sing. present
+            return verb
+
+    if verb in ["focus"]:
+        if form == "VBG":
+            return f'{verb}ing'
+        elif form == "VBD" or form == "VBN":
+            return f'{verb}ed'
+        elif form == "VBZ":
+            return f'{verb}es'
+        else:
+            # Base form or VBP for non-3rd ps. sing. present
+            return verb
+
+    # Verbs forms depending on the tag
+    if form == "VB":
+        # Base form
+        return conjugate(verb, tense=INFINITIVE)
+    elif form == "VBD":
+        # Past tense
+        return conjugate(verb, tense=PAST, number=SG)
+    elif form == "VBG":
+        # Present participle/gerund
+        return conjugate(verb, tense=PARTICIPLE, aspect=PROGRESSIVE)
+    elif form == "VBN":
+        # Past participle
+        return conjugate(verb, tense=PARTICIPLE)
+    elif form == "VBP": 
+        # Non-3rd ps. sing. present
+        return conjugate(verb, tense=PRESENT, number=PL)
+    elif form == "VBZ": 
+        # 3rd ps. sing. present
+        return conjugate(verb, tense=PRESENT, person=3, number=SG)
+    else:
+        raise ValueError(f"Unknown form: {form}")
+
+
+def cast_to_proper_tense(word: str, tense: str) -> str:
+    """
+    Helper function, convert the verb into its base form, then pass to conjugate
+    function to get into correct form
+    """
+    base_verb = lemma(word)
+    correct_form = conjugate_verb_from_base(base_verb, tense)
+    return correct_form
+
+
+def update_regex_tense(regex_pattern: str, tense: str) -> str:
+    """
+    Updates the regex pattern if the token in a suggestion specifies a different
+    verb form to use
+    """
+    # Define a regex to match words outside of the negative lookahead and not preceded by a backslash
+    word_regex = re.compile(r'(?<!\\)\b(\w+)\b(?!\\)')
+
+    # Function to replace the matched word with its proper tense
+    def replace_with_tense(match):
+        # Get the full match and the word
+        full_match, word = match.group(0), match.group(1)
+
+        # Check if the word is within the negative lookahead group
+        lookahead_pattern = r'\(\?\:\?\!.*?\)'
+        if re.search(lookahead_pattern, regex_pattern[match.start():]):
+            return full_match  # If it is, don't replace it
+
+        # Replace the word with its proper tense
+        return full_match.replace(word, cast_to_proper_tense(word, tense))
+
+    # Use the sub method to replace each word with its proper tense
+    updated_pattern = word_regex.sub(replace_with_tense, regex_pattern)
+
+    return updated_pattern
 
 
 def split_rule_into_tokens(rule_text: str) -> List[str]:
@@ -270,9 +358,15 @@ def create_correction_regex(rule_pattern: str, corrections: str) -> List[str]:
             if token.startswith("$"):
                 # this token just refers to a token in the original rule pattern
                 if "-" in token:
-                    token = token.split("-")[0]
-                token_index = int(token[1:])
-                correction_pattern.append(rule_pattern_tokens[token_index])
+                    token_parts = token.split("-")
+                    pointer_token = token_parts[0]
+                    token_index = int(pointer_token[1:])
+                    # this will handle cases like `$2-VBG`
+                    if token_parts[1] in PARTS_OF_SPEECH:
+                        updated_regex = update_regex_tense(rule_pattern_tokens[token_index], token_parts[1])
+                        correction_pattern.append(updated_regex)
+                    else:
+                        correction_pattern.append(rule_pattern_tokens[token_index])
             elif "-$" in token:
                 # this token looks for a conjugated version of a verb, matching the pattern
                 # TODO: how do we know what the pattern form is?
@@ -418,7 +512,6 @@ def filter_suggestion_matches_on_pos_tag(suggestion_filter: str, suggestion_rege
 
     # split the rule into tokens to check if we need to identify a POS tag
     suggestion_tokens = split_rule_into_tokens(suggestion_filter)
-    adhoc_logger.info(f"{suggestion_tokens=}")
     # we dont need to treat punctuations as separate token in this function
     suggestion_tokens = [token for token in suggestion_tokens if token not in PUNCTUATIONS]
     tokens_to_check = []
@@ -501,9 +594,18 @@ def generate_suggestion_filters(rule: str, suggestions: str) -> List[str]:
         suggestion_filter = []
         suggestion_tokens = split_rule_into_tokens(suggestion.strip())
         for suggestion_token in suggestion_tokens:
+            new_suggestion_token = suggestion_token
             if "$" in suggestion_token:
-                suggestion_token = rule_tokens[int(suggestion_token.split("-")[0][1:])]
-            suggestion_filter.append(suggestion_token)
+                split_token = suggestion_token.split("-")
+                reference_index = split_token[0][1:]
+                new_suggestion_token = rule_tokens[int(reference_index)]
+                if len(split_token) > 1:
+                    if split_token[1] in PARTS_OF_SPEECH:
+                        new_suggestion_tokens_split = new_suggestion_token.split(" ")
+                        for individual_suggestion_token in new_suggestion_tokens_split:
+                            if individual_suggestion_token in PARTS_OF_SPEECH:
+                                new_suggestion_token = new_suggestion_token.replace(individual_suggestion_token, split_token[1])
+            suggestion_filter.append(new_suggestion_token)
         suggestion_filters.append(' '.join(suggestion_filter))
     return suggestion_filters
 
@@ -586,7 +688,6 @@ def ngram_helper_suggestion(rule_pattern: str, suggestion_pattern: str) -> Dict:
         
         # create suggestion filters
         suggestion_filters = generate_suggestion_filters(rule_pattern, suggestion_pattern)
-        adhoc_logger.info(f"{suggestion_filters=}")
 
         # search the ngram data for the different patterns
         ngram_data = []
