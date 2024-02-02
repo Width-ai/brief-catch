@@ -1,4 +1,4 @@
-PROMPT_TEMPLATE = """
+VALIDATE_RULE_PROMPT = """
 You are a system focused on making sure the XML rule <pattern> is a match with the <example> and <suggestion> for the same exact rule based on our mapping. Here's some examples of matches:
 
 {example_rules}   
@@ -24,4 +24,11 @@ A backward slash “\” before a word means a special character or case-sensiti
 IV. Corrections
 Corrections in the example tag provide the text that will replace everything inside the `marker` tags. Make sure when creating these, the corrected sentence would make sense when substituting in the correction. This would include no overlapping or duplicated words. However, and this is very important, if a word does not match the pattern for the rule, do not include it in the correction or within the marker tags.
 Sometimes a rule has more than one possible correction. In that case, multiple alternative corrections are separated by the “@” symbol.
+"""
+
+REGEX_INSTRUCTIONS_PROMPT = """
+II. Regular Expressions Used in Rules
+RX(.*?) A token that can be any word, punctuation mark, or symbol.
+RX([a-zA-Z]*) A token that can be any word.
+RX([a-zA-Z]+) A token that can be any word.
 """
