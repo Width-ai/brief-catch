@@ -39,6 +39,7 @@ from utils.utils import (
     combine_all_usages,
 )
 from utils.dynamic_rule_checking import check_rule_modification
+from utils.rule_splitting import split_rule_by_or_operands
 
 
 logger = setup_logger(__name__)
@@ -304,6 +305,32 @@ async def bulk_rule_rewriting(csv_file: UploadFile = File(...)) -> JSONResponse:
     return JSONResponse(
         content={"results": responses, "errors": errors}, status_code=status_code
     )
+
+
+@app.post("/rule-splitting")
+def rule_rewriting(input_data: RuleInputData) -> JSONResponse:
+    """
+    Modify an existing rule based on input and output the new version
+    """
+    try:
+        if input_data.element_action == "or":
+            new_rules: List[str] = split_rule_by_or_operands(
+                input_data.original_rule_text
+            )
+            print(len(new_rules))
+            return JSONResponse(content={"response": new_rules, "usage": 0})
+        elif input_data.element_action == "toobroad":
+            # TODO: implement a method for splitting on rules that are too broad and call here
+            return JSONResponse(
+                content={
+                    "results": "not implemented",
+                    "errors": NotImplementedError,
+                },
+                status_code=501,
+            )
+    except Exception as e:
+        logger.error(e)
+        return JSONResponse(content={"error": str(e)}, status_code=500)
 
 
 @app.post("/update-rule")
