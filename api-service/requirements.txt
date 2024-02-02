@@ -13,3 +13,4 @@ word-embeddings-sdk==0.1.5
 pattern @ git+https://github.com/tanay2001/pattern.git
 xlsxwriter
 spacy==3.7.2
+fuzzywuzzy==0.18.0
