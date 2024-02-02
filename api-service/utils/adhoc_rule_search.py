@@ -330,9 +330,10 @@ def process_pattern(pattern_text: str) -> str:
     Some post processing needed before rule will work correctly
     """
     if pattern_text.startswith("(?:^|\\A|\\n) "):
-        pattern_text = pattern_text.replace("(?:^|\\A|\\n) ", "(?:^|\\A|\\n)")
+        pattern_text = pattern_text.replace("(?:^|\\A|\\n) \\b", "(?:^|\\A|\\n)")
     for punc in PUNCTUATIONS:
         pattern_text = pattern_text.replace(f" {punc}", punc)
+        pattern_text = pattern_text.replace(f"\\b{punc}", punc)
     pattern_text = pattern_text.replace(" (?: (?:", "(?: (?:")
     pattern_text = pattern_text.replace("(?:“|“) ", "(?:“|“)")
     return pattern_text
@@ -365,7 +366,7 @@ def create_correction_regex(rule_pattern: str, corrections: str) -> List[str]:
                     pointer_token = token_parts[0]
                     reference_token = token_parts[1]
                     token_index = int(pointer_token[1:])
-                    reference_token_index = int(reference_token[1:])
+                    # reference_token_index = int(reference_token[1:])
                     # this will handle cases like `$2-VBG`
                     if reference_token in PARTS_OF_SPEECH:
                         updated_regex = update_regex_tense(rule_pattern_tokens[token_index], token_parts[1])
@@ -373,7 +374,7 @@ def create_correction_regex(rule_pattern: str, corrections: str) -> List[str]:
                     # this will handle cases where `$2-$0` references a rule like
                     # CT(be) she (VGB !running !eating ) so now we need the final pattern 
                     # to do something else?
-                    elif "CT" in rule_tokens[reference_token_index]:
+                    elif "CT" in rule_tokens[int(reference_token[1:])]:
                         updated_regex = update_regex_tense(rule_pattern_tokens[token_index], "CT")
                         adhoc_logger.info(f"{updated_regex=}")
                         correction_pattern.append(updated_regex)
@@ -385,8 +386,11 @@ def create_correction_regex(rule_pattern: str, corrections: str) -> List[str]:
                 verb = token.split("-$")[0]
                 correction_pattern.append(generate_verb_forms_regex(verb))
             else:
-                # TODO: are there any other cases to handle?
-                correction_pattern.append('\\b'+token+'\\b')
+                if token[-1] in PUNCTUATIONS:
+                    correction_pattern.append('\\b'+token)
+                else:
+                    # TODO: are there any other cases to handle?
+                    correction_pattern.append('\\b'+token+'\\b')
         correction_patterns.append(process_pattern(' '.join(correction_pattern)))
     
     return correction_patterns
@@ -627,7 +631,7 @@ def generate_suggestion_filters(rule: str, suggestions: str) -> List[str]:
         suggestion_tokens = split_rule_into_tokens(suggestion.strip())
         for suggestion_token in suggestion_tokens:
             new_suggestion_token = suggestion_token
-            if "$" in suggestion_token:
+            if suggestion_token.startswith("$"):
                 # split the token on the hyphen
                 split_token = suggestion_token.split("-")
                 # in the example `$4` the 4 references the 5th token in the original rule, so we need to grab it
@@ -658,6 +662,10 @@ def generate_suggestion_filters(rule: str, suggestions: str) -> List[str]:
                             for individual_suggestion_token in new_suggestion_tokens_split:
                                 if individual_suggestion_token in PARTS_OF_SPEECH:
                                     new_suggestion_token = new_suggestion_token.replace(individual_suggestion_token, matching_tag)
+            # this will catch things like `avoid-$0`
+            elif "-$" in suggestion_token:
+                split_token = suggestion_token.split("-")
+                adhoc_logger.info(f"{split_token=}")
             suggestion_filter.append(new_suggestion_token)
         suggestion_filters.append(' '.join(suggestion_filter))
     return suggestion_filters
@@ -670,7 +678,7 @@ def ngram_helper_rule(rule_pattern: str) -> Dict:
     Helper function to perform the ngram analysis on rule patterns
     """
     try:
-        search_pattern = " ".join(create_regex_from_rule(rule_pattern))
+        search_pattern = process_pattern(" ".join(create_regex_from_rule(rule_pattern)))
         # load the csv with ngram data
         df = pd.read_csv("data/Ngram Over 1 score.csv")
         df.drop(columns=["Unnamed: 2", "Unnamed: 3", "Unnamed: 4"], inplace=True)
@@ -682,6 +690,10 @@ def ngram_helper_rule(rule_pattern: str) -> Dict:
         clusters = []
         usages = []
         records = df[df['ngram'].str.contains(search_pattern)].to_dict(orient='records')
+        # TODO: not sure if we need to account for case. i know there are special times
+        # when the do \{a-Z} and that indicates a capital letter not sure about the rest of the time
+        # records = df[df['ngram'].str.contains(search_pattern, regex=True, flags=re.IGNORECASE)].to_dict(orient='records')
+
 
         # filter results from ngram
         records = filter_matches_on_pos_tag(rule_pattern, records)
