@@ -79,12 +79,54 @@ def conjugate_verb_from_base(verb: str, form: str) -> str:
         raise ValueError(f"Unknown form: {form}")
 
 
+
+def generate_verb_forms(verb: str) -> List[str]:
+    if verb in VERBS_THAT_NEED_HELP:
+        return [verb, f'{verb}ing', f'{verb}ed', f'{verb}s']
+    if verb in OTHER_VERBS_THAT_NEED_HELP:
+        return [verb, f'{verb}ing', f'{verb}ed', f'{verb}es']
+    # Initialize a set to store unique verb forms
+    verb_forms = set()
+
+    # Present tense for all persons and numbers
+    for person in [1, 2, 3]:
+        for number in [SG, PL]:
+            verb_forms.add(conjugate(verb, tense=PRESENT, person=person, number=number))
+
+    # Past tense for singular and plural
+    verb_forms.add(conjugate(verb, tense=PAST, number=SG))
+    verb_forms.add(conjugate(verb, tense=PAST, number=PL))
+
+    # Other forms that do not vary by person or number
+    verb_forms.add(conjugate(verb, tense=PARTICIPLE))  # been
+    verb_forms.add(conjugate(verb, tense=INFINITIVE))  # be
+    verb_forms.add(conjugate(verb, tense=PROGRESSIVE))  # being
+    verb_forms.add(conjugate(verb, tense=FUTURE))       # will be
+
+    verb_forms.discard(None)
+
+    # Convert the set to a list and return it
+    return list(verb_forms)
+
+
+
+def generate_verb_forms_regex(base_verb: str) -> str:
+    verb_forms = generate_verb_forms(base_verb)
+    # Escape any regex special characters in the verb forms
+    escaped_verb_forms = [re.escape(form) for form in verb_forms]
+    # Join the verb forms with the regex 'or' operator (|) and wrap them in word boundaries (\b)
+    regex_pattern = r'\b(?:' + '|'.join(escaped_verb_forms) + r')\b'
+    return regex_pattern
+
+
 def cast_to_proper_tense(word: str, tense: str) -> str:
     """
     Helper function, convert the verb into its base form, then pass to conjugate
     function to get into correct form
     """
     base_verb = lemma(word)
+    if tense == "CT":
+        return generate_verb_forms_regex(base_verb)
     correct_form = conjugate_verb_from_base(base_verb, tense)
     return correct_form
 
@@ -152,46 +194,6 @@ def split_rule_into_tokens(rule_text: str) -> List[str]:
         tokens.append(current_token)
 
     return tokens
-
-
-
-def generate_verb_forms(verb: str) -> List[str]:
-    if verb in VERBS_THAT_NEED_HELP:
-        return [verb, f'{verb}ing', f'{verb}ed', f'{verb}s']
-    if verb in OTHER_VERBS_THAT_NEED_HELP:
-        return [verb, f'{verb}ing', f'{verb}ed', f'{verb}es']
-    # Initialize a set to store unique verb forms
-    verb_forms = set()
-
-    # Present tense for all persons and numbers
-    for person in [1, 2, 3]:
-        for number in [SG, PL]:
-            verb_forms.add(conjugate(verb, tense=PRESENT, person=person, number=number))
-
-    # Past tense for singular and plural
-    verb_forms.add(conjugate(verb, tense=PAST, number=SG))
-    verb_forms.add(conjugate(verb, tense=PAST, number=PL))
-
-    # Other forms that do not vary by person or number
-    verb_forms.add(conjugate(verb, tense=PARTICIPLE))  # been
-    verb_forms.add(conjugate(verb, tense=INFINITIVE))  # be
-    verb_forms.add(conjugate(verb, tense=PROGRESSIVE))  # being
-    verb_forms.add(conjugate(verb, tense=FUTURE))       # will be
-
-    verb_forms.discard(None)
-
-    # Convert the set to a list and return it
-    return list(verb_forms)
-
-
-
-def generate_verb_forms_regex(base_verb: str) -> str:
-    verb_forms = generate_verb_forms(base_verb)
-    # Escape any regex special characters in the verb forms
-    escaped_verb_forms = [re.escape(form) for form in verb_forms]
-    # Join the verb forms with the regex 'or' operator (|) and wrap them in word boundaries (\b)
-    regex_pattern = r'\b(?:' + '|'.join(escaped_verb_forms) + r')\b'
-    return regex_pattern
 
 
 
@@ -342,6 +344,7 @@ def create_correction_regex(rule_pattern: str, corrections: str) -> List[str]:
     Translate corrections into regex strings based on the rule it is associated with
     """
     # generate the tokens for the rule pattern
+    rule_tokens = split_rule_into_tokens(rule_pattern)
     rule_pattern_tokens = create_regex_from_rule(rule_pattern)
     
     # split the correction pattern if multiple exist
@@ -360,13 +363,22 @@ def create_correction_regex(rule_pattern: str, corrections: str) -> List[str]:
                 if "-" in token:
                     token_parts = token.split("-")
                     pointer_token = token_parts[0]
+                    reference_token = token_parts[1]
                     token_index = int(pointer_token[1:])
+                    reference_token_index = int(reference_token[1:])
                     # this will handle cases like `$2-VBG`
-                    if token_parts[1] in PARTS_OF_SPEECH:
+                    if reference_token in PARTS_OF_SPEECH:
                         updated_regex = update_regex_tense(rule_pattern_tokens[token_index], token_parts[1])
                         correction_pattern.append(updated_regex)
-                    else:
-                        correction_pattern.append(rule_pattern_tokens[token_index])
+                    # this will handle cases where `$2-$0` references a rule like
+                    # CT(be) she (VGB !running !eating ) so now we need the final pattern 
+                    # to do something else?
+                    elif "CT" in rule_tokens[reference_token_index]:
+                        updated_regex = update_regex_tense(rule_pattern_tokens[token_index], "CT")
+                        adhoc_logger.info(f"{updated_regex=}")
+                        correction_pattern.append(updated_regex)
+                else:
+                    correction_pattern.append(rule_pattern_tokens[int(token[1:])])
             elif "-$" in token:
                 # this token looks for a conjugated version of a verb, matching the pattern
                 # TODO: how do we know what the pattern form is?
@@ -443,12 +455,28 @@ def _process_match(rule: str, tokens_to_check: List[Dict], optional_tokens: List
                         token_being_checked["index"] -= 1
 
     # make sure everything matches up
-    if all((pos_tags[token_being_checked["index"]][1] == token_being_checked["pos"]) or
-           (not token_being_checked["required"] or
-            (".*?" in token_being_checked["pos"] and pos_tags[token_being_checked["index"]][1].startswith(token_being_checked["pos"][:-3])))
-           for token_being_checked in temp_tokens_to_check):
+    match_conditions_satisfied = True  # Assume true to begin
+    for token_being_checked in temp_tokens_to_check:
+        # Extract the current POS tag from pos_tags
+        current_pos_tag = pos_tags[token_being_checked["index"]][1]
+
+        # Check if the POS tags match
+        pos_tags_match = current_pos_tag == token_being_checked["pos"]
+
+        # Check if the token is not required or if .*? wildcard is used and prefix matches
+        wildcard_or_optional = (not token_being_checked["required"] or
+                                (".*?" in token_being_checked["pos"] and current_pos_tag.startswith(token_being_checked["pos"][:-3])))
+
+        # If neither condition is satisfied, set flag to False and break
+        if not (pos_tags_match or wildcard_or_optional):
+            match_conditions_satisfied = False
+            break  # No need to check further tokens once a mismatch is found
+
+    # Return the match if all conditions were satisfied
+    if match_conditions_satisfied:
         return match
-    return None
+    else:
+        return None
 
 
 
@@ -471,11 +499,16 @@ def filter_matches_on_pos_tag(rule: str, matches: List[Dict]) -> List[Dict]:
     rule_tokens = [token for token in rule_tokens if token not in PUNCTUATIONS]
     tokens_to_check = []
     for token_index, token in enumerate(rule_tokens):
-        for pos in PARTS_OF_SPEECH:
-            if pos in token:
-                tokens_to_check.append({"index": token_index, "pos": pos, "required": "~" not in token})
-                # Stop after the first (most specific) match
-                break
+        if "CT(" in token:
+            tokens_to_check.append({"index": token_index, "pos": "V.*?", "required": "~" not in token})
+            # Stop after the first (most specific) match
+            break
+        else:
+            for pos in PARTS_OF_SPEECH:
+                if pos in token:
+                    tokens_to_check.append({"index": token_index, "pos": pos, "required": "~" not in token})
+                    # Stop after the first (most specific) match
+                    break
 
     # if no tokens need to be checked, return all the matches
     if not tokens_to_check:
@@ -582,7 +615,6 @@ def rank_records_by_score(data: Dict) -> Dict:
     return data
 
 
-
 def generate_suggestion_filters(rule: str, suggestions: str) -> List[str]:
     """
     Generate filters for suggestions using the rules. This is needed when a suggestion
@@ -596,15 +628,36 @@ def generate_suggestion_filters(rule: str, suggestions: str) -> List[str]:
         for suggestion_token in suggestion_tokens:
             new_suggestion_token = suggestion_token
             if "$" in suggestion_token:
+                # split the token on the hyphen
                 split_token = suggestion_token.split("-")
+                # in the example `$4` the 4 references the 5th token in the original rule, so we need to grab it
+                # or in the example `$4-$0` this would be the `$4` but we just want the 4
                 reference_index = split_token[0][1:]
+                # this is us grabbing it
                 new_suggestion_token = rule_tokens[int(reference_index)]
                 if len(split_token) > 1:
-                    if split_token[1] in PARTS_OF_SPEECH:
+                    # the second reference token is the second part of the `$4-$0`, the `0`
+                    second_reference_token = split_token[1]
+                    # if the suggestion token is something like `$4-VBZ`, we need to apply 
+                    # the VBZ to the original token
+                    if second_reference_token in PARTS_OF_SPEECH:
                         new_suggestion_tokens_split = new_suggestion_token.split(" ")
                         for individual_suggestion_token in new_suggestion_tokens_split:
                             if individual_suggestion_token in PARTS_OF_SPEECH:
-                                new_suggestion_token = new_suggestion_token.replace(individual_suggestion_token, split_token[1])
+                                new_suggestion_token = new_suggestion_token.replace(individual_suggestion_token, second_reference_token)
+                    else:
+                        second_reference_token_index = int(second_reference_token[1:])
+                        if "CT(" in rule_tokens[second_reference_token_index]:
+                            new_suggestion_tokens_split = new_suggestion_token.split(" ")
+                            for individual_suggestion_token in new_suggestion_tokens_split:
+                                if individual_suggestion_token in PARTS_OF_SPEECH:
+                                    new_suggestion_token = new_suggestion_token.replace(individual_suggestion_token, "V.*?")
+                        elif any(tag in rule_tokens[second_reference_token_index] for tag in PARTS_OF_SPEECH):
+                            matching_tag = next((tag for tag in PARTS_OF_SPEECH if tag in rule_tokens[second_reference_token_index]), "")
+                            new_suggestion_tokens_split = new_suggestion_token.split(" ")
+                            for individual_suggestion_token in new_suggestion_tokens_split:
+                                if individual_suggestion_token in PARTS_OF_SPEECH:
+                                    new_suggestion_token = new_suggestion_token.replace(individual_suggestion_token, matching_tag)
             suggestion_filter.append(new_suggestion_token)
         suggestion_filters.append(' '.join(suggestion_filter))
     return suggestion_filters
@@ -716,7 +769,7 @@ def ngram_helper_suggestion(rule_pattern: str, suggestion_pattern: str) -> Dict:
                 messages=grouping_messages,
                 model="gpt-4-1106-preview",
                 temperature=0,
-                max_length=1750)
+                max_length=2000)
             usages.append(grouping_usage)
             grouping_messages.append({"role": "assistant", "content": grouping_output})
             grouping_messages.append({"role": "user", "content": OPTIMIZED_GROUPING_FOLLOW_UP})
@@ -724,7 +777,7 @@ def ngram_helper_suggestion(rule_pattern: str, suggestion_pattern: str) -> Dict:
                 messages=grouping_messages,
                 model="gpt-4-1106-preview",
                 temperature=0,
-                max_length=1750)
+                max_length=2000)
             usages.append(clusters_usage)
             cleaned_cluster_output = extract_json_tags(clusters_output)
             clusters = json.loads(cleaned_cluster_output)
