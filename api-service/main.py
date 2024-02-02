@@ -434,17 +434,17 @@ async def bulk_ngram_analysis(csv_file: UploadFile = File(...)) -> JSONResponse:
         logger.error(e)
         return JSONResponse(status_code=500, content=f"Error reading CSV {str(e)}")
 
-    if '//Rule' not in df.columns and '//Correction' not in df.columns:
-        return JSONResponse(status_code=500, content=f"Columns missing '//Correction' or '//Rule', current dataset has columns: {df.columns}")
+    if '//Rule' not in df.columns or '//Correction' not in df.columns or '//Number' not in df.columns:
+        return JSONResponse(status_code=500, content=f"Columns missing '//Correction', '//Rule' or '//Number current dataset has columns: {df.columns}")
 
     responses = []
     errors = []
     records = df.to_dict(orient='records')
-    rule_number_key = [key for key in records[0] if 'number' in key.lower()][0]
     for record in records:
         try:
+            logger.info(f"{record=}")
             responses.append({
-                "rule_number": record[rule_number_key],
+                "rule_number": record.get("//Number"),
                 "correction_analysis": ngram_helper_suggestion(record.get("//Rule"), record.get("//Correction")),
                 "rule_analysis": ngram_helper_rule(record.get("//Rule"))
             })

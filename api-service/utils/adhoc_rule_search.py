@@ -5,7 +5,7 @@ import spacy
 from typing import Dict, List, Tuple
 from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from pattern.en import conjugate, PRESENT, PAST, PARTICIPLE, INFINITIVE, PROGRESSIVE, FUTURE, SG, PL
+from pattern.en import conjugate, lemma, PRESENT, PAST, PARTICIPLE, INFINITIVE, PROGRESSIVE, FUTURE, SG, PL
 from domain.ngram_prompts.prompts import (
     OPTIMIZED_GROUPING_PROMPT,
     OPTIMIZED_GROUPING_FOLLOW_UP
@@ -21,49 +21,62 @@ nlp = spacy.load("en_core_web_sm")
 VERBS_THAT_NEED_HELP = ["center"]
 OTHER_VERBS_THAT_NEED_HELP = ["focus"]
 PARTS_OF_SPEECH = sorted(
-    ["VB", "NNS", "JJ", "V.*?", "VBG", "NN", "NN:U", "NN:UN", "NNP", "PRP.*", "N.*?", "JJ.*?", "IN", "CC", "DT", "EX", "LS", "MD", "POS", "RB", "RBR", "RBS", "UH"],
+    ["VB", "NNS", "JJ", "V.*?", "VBG", "VBN", "VBD", "VBZ", "VBP", "NN", "NN:U", "NN:UN", "NNP", "PRP.*", "N.*?", "JJ.*?", "IN", "CC", "DT", "EX", "LS", "MD", "POS", "RB", "RBR", "RBS", "UH"],
     key=len,
     reverse=True
 )
 PUNCTUATIONS = [",", ";", ":", ".", "!", "?", "-"]
 
 
-def split_rule_into_tokens(rule_text: str) -> List[str]:
-    """
-    Splits rules into tokens
-    """
-    tokens = []
-    current_token = ''
-    # counter to track the depth of nested parentheses
-    depth = 0
 
-    for char in rule_text:
-        if char == '(':
-            # Increase the depth counter when encountering an opening parenthesis
-            depth += 1
-            current_token += char
-        elif char == ')':
-            # Decrease the depth counter when encountering a closing parenthesis
-            depth -= 1
-            current_token += char
-            if depth == 0:
-                # If the depth is zero, we've closed a set of parentheses
-                # Add the current token to the list and reset the current token
-                tokens.append(current_token)
-                current_token = ''
-        elif char.isspace() and depth == 0:
-            # If the character is a space and we're not within parentheses,
-            # add the current token to the list (if it's not empty) and reset the current token
-            if current_token:
-                tokens.append(current_token)
-                current_token = ''
+def conjugate_verb_from_base(verb: str, form: str) -> str:
+    """
+    Given the base form of a verb and the PoS tag of the desired form, conjugate the verb into the correct form
+    """
+    # Special cases for irregular verbs (library uses British English sometimes)
+    if verb in ["center"]:
+        if form == "VBG":
+            return f'{verb}ing'
+        elif form == "VBD" or form == "VBN":
+            return f'{verb}ed'
+        elif form == "VBZ":
+            return f'{verb}s'
         else:
-            # For all other cases, add the character to the current token
-            current_token += char
-    if current_token:
-        tokens.append(current_token)
+            # Base form or VBP for non-3rd ps. sing. present
+            return verb
 
-    return tokens
+    if verb in ["focus"]:
+        if form == "VBG":
+            return f'{verb}ing'
+        elif form == "VBD" or form == "VBN":
+            return f'{verb}ed'
+        elif form == "VBZ":
+            return f'{verb}es'
+        else:
+            # Base form or VBP for non-3rd ps. sing. present
+            return verb
+
+    # Verbs forms depending on the tag
+    if form == "VB":
+        # Base form
+        return conjugate(verb, tense=INFINITIVE)
+    elif form == "VBD":
+        # Past tense
+        return conjugate(verb, tense=PAST, number=SG)
+    elif form == "VBG":
+        # Present participle/gerund
+        return conjugate(verb, tense=PARTICIPLE, aspect=PROGRESSIVE)
+    elif form == "VBN":
+        # Past participle
+        return conjugate(verb, tense=PARTICIPLE)
+    elif form == "VBP": 
+        # Non-3rd ps. sing. present
+        return conjugate(verb, tense=PRESENT, number=PL)
+    elif form == "VBZ": 
+        # 3rd ps. sing. present
+        return conjugate(verb, tense=PRESENT, person=3, number=SG)
+    else:
+        raise ValueError(f"Unknown form: {form}")
 
 
 
@@ -104,6 +117,83 @@ def generate_verb_forms_regex(base_verb: str) -> str:
     # Join the verb forms with the regex 'or' operator (|) and wrap them in word boundaries (\b)
     regex_pattern = r'\b(?:' + '|'.join(escaped_verb_forms) + r')\b'
     return regex_pattern
+
+
+def cast_to_proper_tense(word: str, tense: str) -> str:
+    """
+    Helper function, convert the verb into its base form, then pass to conjugate
+    function to get into correct form
+    """
+    base_verb = lemma(word)
+    if tense == "CT":
+        return generate_verb_forms_regex(base_verb)
+    correct_form = conjugate_verb_from_base(base_verb, tense)
+    return correct_form
+
+
+def update_regex_tense(regex_pattern: str, tense: str) -> str:
+    """
+    Updates the regex pattern if the token in a suggestion specifies a different
+    verb form to use
+    """
+    # Define a regex to match words outside of the negative lookahead and not preceded by a backslash
+    word_regex = re.compile(r'(?<!\\)\b(\w+)\b(?!\\)')
+
+    # Function to replace the matched word with its proper tense
+    def replace_with_tense(match):
+        # Get the full match and the word
+        full_match, word = match.group(0), match.group(1)
+
+        # Check if the word is within the negative lookahead group
+        lookahead_pattern = r'\(\?\:\?\!.*?\)'
+        if re.search(lookahead_pattern, regex_pattern[match.start():]):
+            return full_match  # If it is, don't replace it
+
+        # Replace the word with its proper tense
+        return full_match.replace(word, cast_to_proper_tense(word, tense))
+
+    # Use the sub method to replace each word with its proper tense
+    updated_pattern = word_regex.sub(replace_with_tense, regex_pattern)
+
+    return updated_pattern
+
+
+def split_rule_into_tokens(rule_text: str) -> List[str]:
+    """
+    Splits rules into tokens
+    """
+    tokens = []
+    current_token = ''
+    # counter to track the depth of nested parentheses
+    depth = 0
+
+    for char in rule_text:
+        if char == '(':
+            # Increase the depth counter when encountering an opening parenthesis
+            depth += 1
+            current_token += char
+        elif char == ')':
+            # Decrease the depth counter when encountering a closing parenthesis
+            depth -= 1
+            current_token += char
+            if depth == 0:
+                # If the depth is zero, we've closed a set of parentheses
+                # Add the current token to the list and reset the current token
+                tokens.append(current_token)
+                current_token = ''
+        elif char.isspace() and depth == 0:
+            # If the character is a space and we're not within parentheses,
+            # add the current token to the list (if it's not empty) and reset the current token
+            if current_token:
+                tokens.append(current_token)
+                current_token = ''
+        else:
+            # For all other cases, add the character to the current token
+            current_token += char
+    if current_token:
+        tokens.append(current_token)
+
+    return tokens
 
 
 
@@ -240,9 +330,10 @@ def process_pattern(pattern_text: str) -> str:
     Some post processing needed before rule will work correctly
     """
     if pattern_text.startswith("(?:^|\\A|\\n) "):
-        pattern_text = pattern_text.replace("(?:^|\\A|\\n) ", "(?:^|\\A|\\n)")
+        pattern_text = pattern_text.replace("(?:^|\\A|\\n) \\b", "(?:^|\\A|\\n)")
     for punc in PUNCTUATIONS:
         pattern_text = pattern_text.replace(f" {punc}", punc)
+        pattern_text = pattern_text.replace(f"\\b{punc}", punc)
     pattern_text = pattern_text.replace(" (?: (?:", "(?: (?:")
     pattern_text = pattern_text.replace("(?:“|“) ", "(?:“|“)")
     return pattern_text
@@ -254,6 +345,7 @@ def create_correction_regex(rule_pattern: str, corrections: str) -> List[str]:
     Translate corrections into regex strings based on the rule it is associated with
     """
     # generate the tokens for the rule pattern
+    rule_tokens = split_rule_into_tokens(rule_pattern)
     rule_pattern_tokens = create_regex_from_rule(rule_pattern)
     
     # split the correction pattern if multiple exist
@@ -270,17 +362,35 @@ def create_correction_regex(rule_pattern: str, corrections: str) -> List[str]:
             if token.startswith("$"):
                 # this token just refers to a token in the original rule pattern
                 if "-" in token:
-                    token = token.split("-")[0]
-                token_index = int(token[1:])
-                correction_pattern.append(rule_pattern_tokens[token_index])
+                    token_parts = token.split("-")
+                    pointer_token = token_parts[0]
+                    reference_token = token_parts[1]
+                    token_index = int(pointer_token[1:])
+                    # reference_token_index = int(reference_token[1:])
+                    # this will handle cases like `$2-VBG`
+                    if reference_token in PARTS_OF_SPEECH:
+                        updated_regex = update_regex_tense(rule_pattern_tokens[token_index], token_parts[1])
+                        correction_pattern.append(updated_regex)
+                    # this will handle cases where `$2-$0` references a rule like
+                    # CT(be) she (VGB !running !eating ) so now we need the final pattern 
+                    # to do something else?
+                    elif "CT" in rule_tokens[int(reference_token[1:])]:
+                        updated_regex = update_regex_tense(rule_pattern_tokens[token_index], "CT")
+                        adhoc_logger.info(f"{updated_regex=}")
+                        correction_pattern.append(updated_regex)
+                else:
+                    correction_pattern.append(rule_pattern_tokens[int(token[1:])])
             elif "-$" in token:
                 # this token looks for a conjugated version of a verb, matching the pattern
                 # TODO: how do we know what the pattern form is?
                 verb = token.split("-$")[0]
                 correction_pattern.append(generate_verb_forms_regex(verb))
             else:
-                # TODO: are there any other cases to handle?
-                correction_pattern.append('\\b'+token+'\\b')
+                if token[-1] in PUNCTUATIONS:
+                    correction_pattern.append('\\b'+token)
+                else:
+                    # TODO: are there any other cases to handle?
+                    correction_pattern.append('\\b'+token+'\\b')
         correction_patterns.append(process_pattern(' '.join(correction_pattern)))
     
     return correction_patterns
@@ -349,12 +459,28 @@ def _process_match(rule: str, tokens_to_check: List[Dict], optional_tokens: List
                         token_being_checked["index"] -= 1
 
     # make sure everything matches up
-    if all((pos_tags[token_being_checked["index"]][1] == token_being_checked["pos"]) or
-           (not token_being_checked["required"] or
-            (".*?" in token_being_checked["pos"] and pos_tags[token_being_checked["index"]][1].startswith(token_being_checked["pos"][:-3])))
-           for token_being_checked in temp_tokens_to_check):
+    match_conditions_satisfied = True  # Assume true to begin
+    for token_being_checked in temp_tokens_to_check:
+        # Extract the current POS tag from pos_tags
+        current_pos_tag = pos_tags[token_being_checked["index"]][1]
+
+        # Check if the POS tags match
+        pos_tags_match = current_pos_tag == token_being_checked["pos"]
+
+        # Check if the token is not required or if .*? wildcard is used and prefix matches
+        wildcard_or_optional = (not token_being_checked["required"] or
+                                (".*?" in token_being_checked["pos"] and current_pos_tag.startswith(token_being_checked["pos"][:-3])))
+
+        # If neither condition is satisfied, set flag to False and break
+        if not (pos_tags_match or wildcard_or_optional):
+            match_conditions_satisfied = False
+            break  # No need to check further tokens once a mismatch is found
+
+    # Return the match if all conditions were satisfied
+    if match_conditions_satisfied:
         return match
-    return None
+    else:
+        return None
 
 
 
@@ -377,11 +503,16 @@ def filter_matches_on_pos_tag(rule: str, matches: List[Dict]) -> List[Dict]:
     rule_tokens = [token for token in rule_tokens if token not in PUNCTUATIONS]
     tokens_to_check = []
     for token_index, token in enumerate(rule_tokens):
-        for pos in PARTS_OF_SPEECH:
-            if pos in token:
-                tokens_to_check.append({"index": token_index, "pos": pos, "required": "~" not in token})
-                # Stop after the first (most specific) match
-                break
+        if "CT(" in token:
+            tokens_to_check.append({"index": token_index, "pos": "V.*?", "required": "~" not in token})
+            # Stop after the first (most specific) match
+            break
+        else:
+            for pos in PARTS_OF_SPEECH:
+                if pos in token:
+                    tokens_to_check.append({"index": token_index, "pos": pos, "required": "~" not in token})
+                    # Stop after the first (most specific) match
+                    break
 
     # if no tokens need to be checked, return all the matches
     if not tokens_to_check:
@@ -418,7 +549,6 @@ def filter_suggestion_matches_on_pos_tag(suggestion_filter: str, suggestion_rege
 
     # split the rule into tokens to check if we need to identify a POS tag
     suggestion_tokens = split_rule_into_tokens(suggestion_filter)
-    adhoc_logger.info(f"{suggestion_tokens=}")
     # we dont need to treat punctuations as separate token in this function
     suggestion_tokens = [token for token in suggestion_tokens if token not in PUNCTUATIONS]
     tokens_to_check = []
@@ -489,7 +619,6 @@ def rank_records_by_score(data: Dict) -> Dict:
     return data
 
 
-
 def generate_suggestion_filters(rule: str, suggestions: str) -> List[str]:
     """
     Generate filters for suggestions using the rules. This is needed when a suggestion
@@ -501,9 +630,43 @@ def generate_suggestion_filters(rule: str, suggestions: str) -> List[str]:
         suggestion_filter = []
         suggestion_tokens = split_rule_into_tokens(suggestion.strip())
         for suggestion_token in suggestion_tokens:
-            if "$" in suggestion_token:
-                suggestion_token = rule_tokens[int(suggestion_token.split("-")[0][1:])]
-            suggestion_filter.append(suggestion_token)
+            new_suggestion_token = suggestion_token
+            if suggestion_token.startswith("$"):
+                # split the token on the hyphen
+                split_token = suggestion_token.split("-")
+                # in the example `$4` the 4 references the 5th token in the original rule, so we need to grab it
+                # or in the example `$4-$0` this would be the `$4` but we just want the 4
+                reference_index = split_token[0][1:]
+                # this is us grabbing it
+                new_suggestion_token = rule_tokens[int(reference_index)]
+                if len(split_token) > 1:
+                    # the second reference token is the second part of the `$4-$0`, the `0`
+                    second_reference_token = split_token[1]
+                    # if the suggestion token is something like `$4-VBZ`, we need to apply 
+                    # the VBZ to the original token
+                    if second_reference_token in PARTS_OF_SPEECH:
+                        new_suggestion_tokens_split = new_suggestion_token.split(" ")
+                        for individual_suggestion_token in new_suggestion_tokens_split:
+                            if individual_suggestion_token in PARTS_OF_SPEECH:
+                                new_suggestion_token = new_suggestion_token.replace(individual_suggestion_token, second_reference_token)
+                    else:
+                        second_reference_token_index = int(second_reference_token[1:])
+                        if "CT(" in rule_tokens[second_reference_token_index]:
+                            new_suggestion_tokens_split = new_suggestion_token.split(" ")
+                            for individual_suggestion_token in new_suggestion_tokens_split:
+                                if individual_suggestion_token in PARTS_OF_SPEECH:
+                                    new_suggestion_token = new_suggestion_token.replace(individual_suggestion_token, "V.*?")
+                        elif any(tag in rule_tokens[second_reference_token_index] for tag in PARTS_OF_SPEECH):
+                            matching_tag = next((tag for tag in PARTS_OF_SPEECH if tag in rule_tokens[second_reference_token_index]), "")
+                            new_suggestion_tokens_split = new_suggestion_token.split(" ")
+                            for individual_suggestion_token in new_suggestion_tokens_split:
+                                if individual_suggestion_token in PARTS_OF_SPEECH:
+                                    new_suggestion_token = new_suggestion_token.replace(individual_suggestion_token, matching_tag)
+            # this will catch things like `avoid-$0`
+            elif "-$" in suggestion_token:
+                split_token = suggestion_token.split("-")
+                adhoc_logger.info(f"{split_token=}")
+            suggestion_filter.append(new_suggestion_token)
         suggestion_filters.append(' '.join(suggestion_filter))
     return suggestion_filters
 
@@ -515,7 +678,7 @@ def ngram_helper_rule(rule_pattern: str) -> Dict:
     Helper function to perform the ngram analysis on rule patterns
     """
     try:
-        search_pattern = " ".join(create_regex_from_rule(rule_pattern))
+        search_pattern = process_pattern(" ".join(create_regex_from_rule(rule_pattern)))
         # load the csv with ngram data
         df = pd.read_csv("data/Ngram Over 1 score.csv")
         df.drop(columns=["Unnamed: 2", "Unnamed: 3", "Unnamed: 4"], inplace=True)
@@ -527,6 +690,10 @@ def ngram_helper_rule(rule_pattern: str) -> Dict:
         clusters = []
         usages = []
         records = df[df['ngram'].str.contains(search_pattern)].to_dict(orient='records')
+        # TODO: not sure if we need to account for case. i know there are special times
+        # when the do \{a-Z} and that indicates a capital letter not sure about the rest of the time
+        # records = df[df['ngram'].str.contains(search_pattern, regex=True, flags=re.IGNORECASE)].to_dict(orient='records')
+
 
         # filter results from ngram
         records = filter_matches_on_pos_tag(rule_pattern, records)
@@ -586,7 +753,6 @@ def ngram_helper_suggestion(rule_pattern: str, suggestion_pattern: str) -> Dict:
         
         # create suggestion filters
         suggestion_filters = generate_suggestion_filters(rule_pattern, suggestion_pattern)
-        adhoc_logger.info(f"{suggestion_filters=}")
 
         # search the ngram data for the different patterns
         ngram_data = []
@@ -615,7 +781,7 @@ def ngram_helper_suggestion(rule_pattern: str, suggestion_pattern: str) -> Dict:
                 messages=grouping_messages,
                 model="gpt-4-1106-preview",
                 temperature=0,
-                max_length=1750)
+                max_length=2000)
             usages.append(grouping_usage)
             grouping_messages.append({"role": "assistant", "content": grouping_output})
             grouping_messages.append({"role": "user", "content": OPTIMIZED_GROUPING_FOLLOW_UP})
@@ -623,7 +789,7 @@ def ngram_helper_suggestion(rule_pattern: str, suggestion_pattern: str) -> Dict:
                 messages=grouping_messages,
                 model="gpt-4-1106-preview",
                 temperature=0,
-                max_length=1750)
+                max_length=2000)
             usages.append(clusters_usage)
             cleaned_cluster_output = extract_json_tags(clusters_output)
             clusters = json.loads(cleaned_cluster_output)
