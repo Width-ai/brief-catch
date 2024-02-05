@@ -1,8 +1,11 @@
 from typing import List
 import re
-
 import json
-from utils.dynamic_prompting import get_pos_tag_dicts_from_rule, POS_MAPS
+from utils.dynamic_prompting import (
+    get_pos_tag_dicts_from_rule,
+    rule_has_regex,
+    POS_MAPS,
+)
 from utils.utils import generate_simple_message, call_gpt
 from domain.dynamic_prompting.prompt_leggo import (
     GENERAL_INSTRUCTIONS_PROMPT,
@@ -50,7 +53,8 @@ def split_rule_by_or_operands(input_rule: str) -> List[str]:
 def split_broad_rule_with_instructions(input_rule, user_considerations) -> List[str]:
     # grab part of speech tag from rule
     pos_tags_input_rule = get_pos_tag_dicts_from_rule(input_rule, list(POS_MAPS.keys()))
-    # NOTE: prompt has the following POStags, including them manually here
+    # NOTE: `SPLITTING_FEWSHOT_PROMPT` used in this prompt has the following POStags,
+    # including them manually here:
     pos_tags_in_prompt = {
         "VB": "VB Verb, base form: eat, jump, believe, be, have",
         "VBD": "VBD Verb, past tense: ate, jumped, believed",
@@ -61,8 +65,6 @@ def split_broad_rule_with_instructions(input_rule, user_considerations) -> List[
     }
     all_pos = {**pos_tags_input_rule, **pos_tags_in_prompt}
     _replace_pos = "\n".join([f"{v}" for k, v in all_pos.items()])
-    print(_replace_pos)
-    from utils.dynamic_prompting import rule_has_regex
 
     if rule_has_regex(input_rule):
         _replace_regex = REGEX_INSTRUCTIONS_PROMPT
@@ -79,18 +81,23 @@ def split_broad_rule_with_instructions(input_rule, user_considerations) -> List[
     Below I will provide you with some additional context and at the bottom of this message is an example of a rule being split.
     """
 
+    _replace_output_instructions = """Respond, in JSON format. Your output should contain two fields (`rule_1` and `rule_2`) with the split rules"""
+
     final_prompt_template = """
     {task_instruction}
 
     {general_instructions}
 
     {splitting_fewshot}
+
+    {output_instructions}
     """
 
     system_prompt = final_prompt_template.format(
         task_instruction=_replace_task_instruction,
         general_instructions=_replace_general_instruction,
         splitting_fewshot=SPLITTING_FEWSHOT_PROMPT,
+        output_instructions=_replace_output_instructions,
     )
     user_prompt = json.dumps(
         {
@@ -98,8 +105,11 @@ def split_broad_rule_with_instructions(input_rule, user_considerations) -> List[
             "additional_considerations": user_considerations,
         },
     )
-    model_response = call_gpt(
+    model_response, usage = call_gpt(
         messages=generate_simple_message(system_prompt, user_prompt),
-        model="gpt-4-1106-preview",
+        model="gpt-4-0125-preview",
+        max_length=4096,
+        response_format="json_object",
     )
-    return "TODO: parse model response for two rule xmls", model_response
+    split_rules_dict = json.loads(model_response[0])
+    return split_rules_dict, usage
