@@ -1,11 +1,11 @@
 from utils.utils import call_gpt_with_backoff, generate_simple_message
-from rule_similarity import get_similar_template_rules
+from utils.rule_similarity import get_similar_template_rules
 from domain.dynamic_prompting.parts_of_speech import POS_MAPS
 from domain.dynamic_prompting.prompt_leggo import (
     VALIDATE_RULE_PROMPT,
     REGEX_INSTRUCTIONS_PROMPT,
 )
-from dynamic_prompting import (
+from utils.dynamic_prompting import (
     get_pos_tag_dicts_from_rule,
     remove_message_and_short_tags,
     rule_has_regex,
