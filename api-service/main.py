@@ -39,7 +39,10 @@ from utils.utils import (
     combine_all_usages,
 )
 from utils.dynamic_rule_checking import check_rule_modification
-from utils.rule_splitting import split_rule_by_or_operands
+from utils.rule_splitting import (
+    split_rule_by_or_operands,
+    split_broad_rule_with_instructions,
+)
 
 
 logger = setup_logger(__name__)
@@ -314,20 +317,17 @@ def rule_rewriting(input_data: RuleInputData) -> JSONResponse:
     """
     try:
         if input_data.element_action == "or":
+            usage = 0
             new_rules: List[str] = split_rule_by_or_operands(
                 input_data.original_rule_text
             )
-            print(len(new_rules))
-            return JSONResponse(content={"response": new_rules, "usage": 0})
         elif input_data.element_action == "toobroad":
             # TODO: implement a method for splitting on rules that are too broad and call here
-            return JSONResponse(
-                content={
-                    "results": "not implemented",
-                    "errors": NotImplementedError,
-                },
-                status_code=501,
+            new_rules, usage = split_broad_rule_with_instructions(
+                input_data.original_rule_text,
+                input_data.specific_actions[0],
             )
+        return JSONResponse(content={"response": new_rules, "usage": usage})
     except Exception as e:
         logger.error(e)
         return JSONResponse(content={"error": str(e)}, status_code=500)

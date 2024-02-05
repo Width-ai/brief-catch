@@ -238,9 +238,11 @@ elif modification_action == "Disable":
     st.session_state["rule_to_modify"] = st.selectbox(
         "Select rule to disable:",
         list(rules.keys()),
-        index=0
-        if st.session_state["rule_to_modify"] is None
-        else list(rules.keys()).index(st.session_state["rule_to_modify"]),
+        index=(
+            0
+            if st.session_state["rule_to_modify"] is None
+            else list(rules.keys()).index(st.session_state["rule_to_modify"])
+        ),
     )
 
     with st.expander("Original rule"):
@@ -249,9 +251,11 @@ elif modification_action == "Disable":
     st.session_state["disable_scope"] = st.selectbox(
         "What do you want to disable?",
         disable_scopes,
-        index=0
-        if st.session_state["disable_scope"] is None
-        else disable_scopes.index(st.session_state["disable_scope"]),
+        index=(
+            0
+            if st.session_state["disable_scope"] is None
+            else disable_scopes.index(st.session_state["disable_scope"])
+        ),
     )
 
     if st.session_state["disable_scope"] == "Element":
@@ -406,7 +410,7 @@ elif modification_action == "Split":
 
     split_strategies = [
         "Split <or> tag",
-        # "Rule is too broad",
+        "Rule is too broad",
     ]
     split_strategy = st.selectbox(
         "How would you like to split?",
@@ -419,7 +423,7 @@ elif modification_action == "Split":
     elif split_strategy == split_strategies[1]:
         # split: rule too broad
         action = "toobroad"
-        # TODO: include a field for passing user instruction on how to split to GPT
+        additional_considerations = st.text_input("Additional Considerations")
     else:
         st.error("Invalid splitting action selected.")
     if st.button("Split"):
@@ -428,7 +432,7 @@ elif modification_action == "Split":
             json={
                 "target_element": "",
                 "element_action": action,
-                "specific_actions": [""],
+                "specific_actions": [additional_considerations],
                 "original_rule_text": original_rule,
             },
         )

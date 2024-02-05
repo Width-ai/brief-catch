@@ -111,5 +111,9 @@ def split_broad_rule_with_instructions(input_rule, user_considerations) -> List[
         max_length=4096,
         response_format="json_object",
     )
+    # expect gpt response has a json with {'rule_1':str, 'rule_2':str}
     split_rules_dict = json.loads(model_response[0])
-    return split_rules_dict, usage
+    rule_1 = split_rules_dict.get("rule_1", None)
+    rule_2 = split_rules_dict.get("rule_2", None)
+    new_rules = [rule_1, rule_2]
+    return new_rules, usage
