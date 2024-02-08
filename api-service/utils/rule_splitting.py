@@ -81,7 +81,7 @@ def split_broad_rule_with_instructions(input_rule, user_considerations) -> List[
     Below I will provide you with some additional context and at the bottom of this message is an example of a rule being split.
     """
 
-    _replace_output_instructions = """Respond, in JSON format. Your output should contain two fields (`rule_1` and `rule_2`) with the split rules"""
+    _replace_output_instructions = """Respond, in valid JSON format. Your output should contain two fields ("rule_1" and "rule_2") with the split rules"""
 
     final_prompt_template = """
     {task_instruction}
@@ -111,8 +111,8 @@ def split_broad_rule_with_instructions(input_rule, user_considerations) -> List[
         max_length=4096,
         response_format="json_object",
     )
-    # expect gpt response has a json with {'rule_1':str, 'rule_2':str}
-    split_rules_dict = json.loads(model_response[0])
+    # expect gpt response has a json with {"rule_1":str, "rule_2":str}
+    split_rules_dict = json.loads(model_response)
     rule_1 = split_rules_dict.get("rule_1", None)
     rule_2 = split_rules_dict.get("rule_2", None)
     new_rules = [rule_1, rule_2]

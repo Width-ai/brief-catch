@@ -420,6 +420,7 @@ elif modification_action == "Split":
     if split_strategy == split_strategies[0]:
         # split: on or
         action = "or"
+        additional_considerations = ""
     elif split_strategy == split_strategies[1]:
         # split: rule too broad
         action = "toobroad"
