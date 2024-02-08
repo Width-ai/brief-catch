@@ -1,25 +1,27 @@
-from typing import List
-import re
 import json
-from utils.dynamic_prompting import (
-    get_pos_tag_dicts_from_rule,
-    rule_has_regex,
-    POS_MAPS,
-)
-from utils.utils import generate_simple_message, call_gpt
+import re
+import random
+from typing import Dict, List, Tuple
 from domain.dynamic_prompting.prompt_leggo import (
     GENERAL_INSTRUCTIONS_PROMPT,
     SPLITTING_FEWSHOT_PROMPT,
     REGEX_INSTRUCTIONS_PROMPT,
 )
+from utils.dynamic_prompting import (
+    get_pos_tag_dicts_from_rule,
+    rule_has_regex,
+    POS_MAPS,
+)
+from utils.dynamic_rule_checking import check_rule_modification
+from utils.utils import generate_simple_message, call_gpt, combine_all_usages
 
 
 ## split on or
-def extract_or_tag(rule_xml: str) -> str:
-    or_contentL = re.search(r"(<or>.*?</or>)", rule_xml, re.DOTALL)
+def extract_or_tag(rule_xml: str, target_or_index: int = 0) -> str:
+    or_contentL = re.findall(r"(<or>.*?</or>)", rule_xml, re.DOTALL)
     if not or_contentL:
         return None
-    return or_contentL.group(1)
+    return or_contentL[target_or_index]
 
 
 def extract_operands(or_input_string: str) -> List[str]:
@@ -29,12 +31,43 @@ def extract_operands(or_input_string: str) -> List[str]:
     return re.findall(token_pattern, or_input_string, re.DOTALL)
 
 
-def split_rule_by_or_operands(input_rule: str) -> List[str]:
+def replace_with_new_id(match: re.Match) -> str:
     """
-    TODO: currently does not handle case where rule has two or tags.
+    Replace the rule ID with a new random rule ID
+    """
+    return match.group(1) + ''.join([str(random.randint(0, 9)) for _ in range(39)]) + '"'
 
+
+def update_rule_name(match: re.Match, idx: int) -> str:
     """
-    or_content = extract_or_tag(input_rule)
+    Update the rule name to have the split notation {rule_number}.{split_number}
+    """
+    if "." not in match.group(1):
+        return f'{match.group(1)}.{idx+1}'
+    
+    return match.group(1)
+
+
+def update_split_rules_name_id(rules_to_update: List[str]) -> List[str]:
+    """
+    Update the rule name and ID after splitting
+    """
+    output_rules = []
+    for index, rule in enumerate(rules_to_update):
+        id_pattern = r'(id="BRIEFCATCH_)\d{39}"'
+        rule_with_id = re.sub(id_pattern, replace_with_new_id, rule)
+        name_pattern = r'(name="BRIEFCATCH_[A-Z_]+\d+(\.\d+)?)'
+        final_rule = re.sub(name_pattern, lambda match: update_rule_name(match, index), rule_with_id)
+        output_rules.append(final_rule)
+
+    return output_rules
+
+
+def split_rule_by_or_operands(input_rule: str, target_or_index: int = 0) -> Tuple[List[str], Dict]:
+    """
+    Splits the rule by the specified <or> tag
+    """
+    or_content = extract_or_tag(input_rule, target_or_index)
     if not or_content:
         return input_rule
     operand_list = extract_operands(or_content)
@@ -44,13 +77,22 @@ def split_rule_by_or_operands(input_rule: str) -> List[str]:
     for operand_str in operand_list:
         operand_rule = f"{split_rule[0]}{operand_str}{split_rule[1]}"
         operand_rules.append(operand_rule)
-    return operand_rules
+    
+    # update rule name and id
+    updated_rules = update_split_rules_name_id(rules_to_update=operand_rules)
+
+    final_rules = []
+    usages = []
+    for rule in updated_rules:
+        checked_rule, usage = check_rule_modification(rule)
+        final_rules.append(checked_rule)
+        usages.extend(usage)
+    
+    return final_rules, combine_all_usages(usages)
 
 
 ## split rule that is too broad
-
-
-def split_broad_rule_with_instructions(input_rule, user_considerations) -> List[str]:
+def split_broad_rule_with_instructions(input_rule, user_considerations) -> Tuple[List[str], Dict]:
     # grab part of speech tag from rule
     pos_tags_input_rule = get_pos_tag_dicts_from_rule(input_rule, list(POS_MAPS.keys()))
     # NOTE: `SPLITTING_FEWSHOT_PROMPT` used in this prompt has the following POStags,
@@ -81,7 +123,7 @@ def split_broad_rule_with_instructions(input_rule, user_considerations) -> List[
     Below I will provide you with some additional context and at the bottom of this message is an example of a rule being split.
     """
 
-    _replace_output_instructions = """Respond, in valid JSON format. Your output should contain two fields ("rule_1" and "rule_2") with the split rules"""
+    _replace_output_instructions = """Your response should be a valid JSON object. Your output should contain two fields ("rule_1" and "rule_2") with the split XML rules as their corresponding values"""
 
     final_prompt_template = """
     {task_instruction}
@@ -107,7 +149,7 @@ def split_broad_rule_with_instructions(input_rule, user_considerations) -> List[
     )
     model_response, usage = call_gpt(
         messages=generate_simple_message(system_prompt, user_prompt),
-        model="gpt-4-0125-preview",
+        model="gpt-4-1106-preview",
         max_length=4096,
         response_format="json_object",
     )
@@ -116,4 +158,8 @@ def split_broad_rule_with_instructions(input_rule, user_considerations) -> List[
     rule_1 = split_rules_dict.get("rule_1", None)
     rule_2 = split_rules_dict.get("rule_2", None)
     new_rules = [rule_1, rule_2]
-    return new_rules, usage
+
+    # update rule name and id
+    output_rules = update_split_rules_name_id(rules_to_update=new_rules)
+
+    return output_rules, usage

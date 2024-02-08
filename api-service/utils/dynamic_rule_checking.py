@@ -1,5 +1,4 @@
-from utils.utils import call_gpt_with_backoff, generate_simple_message
-from utils.rule_similarity import get_similar_template_rules
+from typing import Dict, List, Tuple
 from domain.dynamic_prompting.parts_of_speech import POS_MAPS
 from domain.dynamic_prompting.prompt_leggo import (
     VALIDATE_RULE_PROMPT,
@@ -11,9 +10,11 @@ from utils.dynamic_prompting import (
     rule_has_regex,
     replace_all_instances_of_tag,
 )
+from utils.rule_similarity import get_similar_template_rules
+from utils.utils import call_gpt_with_backoff, generate_simple_message
 
 
-def check_rule_modification(input_rule_xml: str) -> str:
+def check_rule_modification(input_rule_xml: str) -> Tuple[str, List[Dict]]:
     """
     1. 3 example known valid rules that are most similar to rule
     2. POS tags that are present in input rule

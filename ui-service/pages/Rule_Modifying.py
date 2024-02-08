@@ -417,10 +417,14 @@ elif modification_action == "Split":
         split_strategies,
     )
     original_rule = st.session_state["modified_rule"]
+    target_or_index = 0
     if split_strategy == split_strategies[0]:
         # split: on or
         action = "or"
         additional_considerations = ""
+        or_tags = re.findall(r"<or>.*?</or>", original_rule, re.DOTALL)
+        if len(or_tags) > 0:
+            target_or_index = st.number_input("Index of <or> tag to split on (start counting with zero):", 0, len(or_tags)-1)
     elif split_strategy == split_strategies[1]:
         # split: rule too broad
         action = "toobroad"
@@ -435,6 +439,7 @@ elif modification_action == "Split":
                 "element_action": action,
                 "specific_actions": [additional_considerations],
                 "original_rule_text": original_rule,
+                "target_or_index": target_or_index,
             },
         )
         if response.status_code == 200:
@@ -442,5 +447,6 @@ elif modification_action == "Split":
             st.session_state["modified"] = True
             for ix, operand_rule in enumerate(json_response["response"]):
                 st.code(operand_rule)
+            st.code(json_response["usage"])
 else:
     st.error("Invalid action selected.")

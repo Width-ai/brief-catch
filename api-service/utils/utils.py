@@ -404,6 +404,9 @@ def update_rule_helper(rules_to_update: List[RuleToUpdate]) -> str:
             pr_body = f"This is an automatically generated PR to update {len(rules_to_update)} rules"
 
         for rule in rules_to_update:
+            if rule.modified_rule_name not in rules_dict.keys():
+                # check if we need to replace a rule for splitting or if we can just add in the rule
+                pass
             rules_dict[rule.modified_rule_name] = rule.modified_rule
 
         new_rule_file = "\n".join(rules_dict.values())

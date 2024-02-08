@@ -317,12 +317,11 @@ def rule_rewriting(input_data: RuleInputData) -> JSONResponse:
     """
     try:
         if input_data.element_action == "or":
-            usage = 0
-            new_rules: List[str] = split_rule_by_or_operands(
-                input_data.original_rule_text
+            new_rules, usage = split_rule_by_or_operands(
+                input_rule=input_data.original_rule_text,
+                target_or_index=input_data.target_or_index
             )
         elif input_data.element_action == "toobroad":
-            # TODO: implement a method for splitting on rules that are too broad and call here
             new_rules, usage = split_broad_rule_with_instructions(
                 input_data.original_rule_text,
                 input_data.specific_actions[0],

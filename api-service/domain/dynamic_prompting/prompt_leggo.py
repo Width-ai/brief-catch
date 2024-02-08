@@ -181,4 +181,7 @@ score higher in ngram than the original "ascertain whether".
 And that in turn results in a "rule split" in a sense that we need to 
 create an additional rule just for the sequence "ascertain whether" with 
 only the 2 suggestions "decide" and "determine".
+
+
+Do not modify the **ID** or the **name** of the output rules.
 """
