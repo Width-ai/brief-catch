@@ -81,6 +81,17 @@ def call_gpt(model: str, messages: List, temperature: float = 0.7, max_length: i
     return response['choices'][0]['message']['content'], usage
 
 
+
+def combine_all_usages(all_usages: List[Dict]) -> Dict:
+    """
+    Use dictionary comprehension to sum the values of identical keys
+    """
+    return {
+        key: sum(d.get(key, 0) for d in all_usages) 
+        for key in set().union(*all_usages)
+    }
+
+
 def convert_log_probs_to_percentage(log_probs: dict) -> dict:
     """
     Calculate the exponent of each value to get probabilities
