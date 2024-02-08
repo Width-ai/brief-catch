@@ -405,8 +405,11 @@ def update_rule_helper(rules_to_update: List[RuleToUpdate]) -> str:
 
         for rule in rules_to_update:
             if rule.modified_rule_name not in rules_dict.keys():
-                # check if we need to replace a rule for splitting or if we can just add in the rule
-                pass
+                if "." in rule.modified_rule_name:
+                    original_rule_name = re.sub(r"\.\d+", "", rule.modified_rule_name)
+                    if original_rule_name in rules_dict.keys():
+                        utils_logger.info(f"Removing rule {original_rule_name} from dictionary...")
+                        rules_dict.pop(original_rule_name)
             rules_dict[rule.modified_rule_name] = rule.modified_rule
 
         new_rule_file = "\n".join(rules_dict.values())

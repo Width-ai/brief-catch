@@ -4,6 +4,7 @@ import requests
 import streamlit as st
 import toml
 from dotenv import load_dotenv
+from typing import List
 from lxml import etree
 
 load_dotenv()
@@ -68,6 +69,31 @@ def create_pr(rule_name: str, modified_rule: str):
             st.session_state.pop("usage", None)
         else:
             st.error(f"Error creating PR: {pr_json.get('error')}")
+
+
+def create_split_pr(rules: List[str]):
+    with st.spinner("Opening Pull Request..."):
+        rules_to_update = []
+        for rule in rules:
+            new_rule_name_match = re.search(name_regex_pattern, rule)
+            new_rule_name = new_rule_name_match.group(1)
+            rules_to_update.append({"modified_rule_name": new_rule_name, "modified_rule": rule})
+        if not rules_to_update:
+            st.error("Could not create object to send for PR...")
+        else:
+            pr_response = requests.post(
+                f"{API_URL}/update-rule",
+                json={"rules_to_update": rules_to_update},
+            )
+            pr_json = pr_response.json()
+
+            if pr_response.ok:
+                st.write(f"Created pull request: {pr_json.get('pull_request_link')}")
+                st.session_state["modified"] = False
+                st.session_state.pop("modified_rule", None)
+                st.session_state.pop("usage", None)
+            else:
+                st.error(f"Error creating PR: {pr_json.get('error')}")
 
 
 def comment_out_element(
@@ -445,8 +471,14 @@ elif modification_action == "Split":
         if response.status_code == 200:
             json_response = response.json()
             st.session_state["modified"] = True
+            st.session_state["split_rules"] = []
             for ix, operand_rule in enumerate(json_response["response"]):
                 st.code(operand_rule)
+                st.session_state["split_rules"].append(operand_rule)
             st.code(json_response["usage"])
+    if st.session_state.get("modified", False):
+        if st.button("Update Repo"):
+            with st.spinner("Opening Pull Request..."):
+                create_split_pr(rules=st.session_state.get("split_rules", []))
 else:
     st.error("Invalid action selected.")
