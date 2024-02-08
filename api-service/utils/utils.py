@@ -514,6 +514,19 @@ def extract_json_tags(input_text: str) -> str:
     return new_str
 
 
+def remove_thought_tags(text: str) -> str:
+    """
+    Remove the thought tags from a string
+    """
+    # This pattern handles tags that span multiple lines and ignores case
+    thought_pattern = re.compile(r'<thought>.*?</thought>', re.DOTALL | re.IGNORECASE)
+    
+    # Substitute occurrences of the pattern with an empty string to remove them
+    cleaned_text = re.sub(thought_pattern, '', text)
+    
+    return cleaned_text
+
+
 def clean_json_output(raw_output: str) -> Dict:
     """
     Clean JSON output from GPT and load as dictionary

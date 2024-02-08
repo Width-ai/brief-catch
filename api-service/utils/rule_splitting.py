@@ -13,7 +13,11 @@ from utils.dynamic_prompting import (
     POS_MAPS,
 )
 from utils.dynamic_rule_checking import check_rule_modification
+from utils.logger import setup_logger
 from utils.utils import generate_simple_message, call_gpt, combine_all_usages
+
+
+splitter_logger = setup_logger(__name__)
 
 
 ## split on or
@@ -84,6 +88,7 @@ def split_rule_by_or_operands(input_rule: str, target_or_index: int = 0) -> Tupl
     final_rules = []
     usages = []
     for rule in updated_rules:
+        splitter_logger.info("checking rule")
         checked_rule, usage = check_rule_modification(rule)
         final_rules.append(checked_rule)
         usages.extend(usage)

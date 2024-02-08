@@ -45,30 +45,29 @@ def remove_message_and_short_tags(xml_string):
     return xml_string
 
 
-def replace_all_instances_of_tag(
-    tag_label,
-    src_rule_xml,
-    target_rule_xml,
-):
+def replace_all_instances_of_tag(tag_label, src_rule_xml, target_rule_xml):
     """
-    replace all instances of `<tag_label>` in `src_rule_xml` with
+    Replace all instances of `<tag_label>` in `src_rule_xml` with
     the corresponding `<tag_label>` in `target_rule_xml`.
-    ~ sorry
     """
+    # A list to hold all replacement tags from the target_rule_xml
+    replacement_tags = re.findall(
+        r'<{0}.*?</{0}>'.format(re.escape(tag_label)),
+        target_rule_xml, 
+        flags=re.DOTALL
+    )
 
+    # Create an iterator from the replacement tags
+    replacements = iter(replacement_tags)
+    
     def get_next_tag_instance(match):
-        # tag_xml is an instance that matches `<tag_label>.*?</tag_label>`
-        tag_xml = (
-            f"<{tag_label}>{match.group(1)}</{tag_label}>"
-            for match in re.finditer(
-                rf"<{tag_label}>(.*?)</{tag_label}>",
-                target_rule_xml,
-            )
-        )
-        return next(tag_xml, match.group(0))
-
+        # Get the next tag from the iterator, or use the original if none left
+        return next(replacements, match.group(0))
+    
+    # Use re.sub with a function that replaces the matched content
     return re.sub(
-        rf"<{tag_label}>.*?</{tag_label}>",
+        r'<{0}.*?</{0}>'.format(re.escape(tag_label)),
         get_next_tag_instance,
         src_rule_xml,
+        flags=re.DOTALL
     )
