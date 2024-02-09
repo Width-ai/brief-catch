@@ -26,6 +26,7 @@ class RuleInputData(BaseModel):
     element_action: str
     specific_actions: List[str]
     original_rule_text: Optional[str] = None
+    target_or_index: Optional[int] = None
 
 
 class RuleToUpdate(BaseModel):

@@ -1,19 +1,24 @@
-from utils.utils import call_gpt_with_backoff, generate_simple_message
-from rule_similarity import get_similar_template_rules
+from typing import Dict, List, Tuple
 from domain.dynamic_prompting.parts_of_speech import POS_MAPS
 from domain.dynamic_prompting.prompt_leggo import (
     VALIDATE_RULE_PROMPT,
     REGEX_INSTRUCTIONS_PROMPT,
 )
-from dynamic_prompting import (
+from utils.dynamic_prompting import (
     get_pos_tag_dicts_from_rule,
     remove_message_and_short_tags,
     rule_has_regex,
     replace_all_instances_of_tag,
 )
+from utils.logger import setup_logger
+from utils.rule_similarity import get_similar_template_rules
+from utils.utils import call_gpt_with_backoff, generate_simple_message, remove_thought_tags
 
 
-def check_rule_modification(input_rule_xml: str) -> str:
+dynamic_logger = setup_logger(__name__)
+
+
+def check_rule_modification(input_rule_xml: str) -> Tuple[str, List[Dict]]:
     """
     1. 3 example known valid rules that are most similar to rule
     2. POS tags that are present in input rule
@@ -61,7 +66,7 @@ def check_rule_modification(input_rule_xml: str) -> str:
         regex_rules=_replace_regex,
     )
     user_prompt = (
-        "Input <pattern>:\n"
+        "Input rule:\n"
         + input_rule_xml
         + "\n\n"
         + "Are the <pattern> and Suggestion & Example of the XML rule a match? They are only a match if they are written EXACTLY how they should be. Yes or No. "
@@ -86,7 +91,6 @@ def check_rule_modification(input_rule_xml: str) -> str:
     # check response and ask for correction if necessary
     if "yes" in response[:3].lower():
         return input_rule_xml, usages
-
     elif "no" in response[:3].lower():
         # rewrite suggestion and example tags
         messages = [
@@ -95,15 +99,19 @@ def check_rule_modification(input_rule_xml: str) -> str:
             {"role": "assistant", "content": "No."},
             {
                 "role": "user",
-                "content": "Rewrite the <suggestion> and <example> tags to be correct:",
+                "content": "Rewrite the <suggestion> and <example> tags to be correct. Think about what the example tag should be before writing it, paying special attention when placing <marker> tags. The <marker> tags **must** surround text that matches the pattern of the rule. Surround these thoughts in <thought> tags:",
             },
         ]
 
         response_tags_rewrite, usage = call_gpt_with_backoff(
-            messages=message,
+            messages=messages,
             temperature=0,
             model="gpt-4-1106-preview",
+            max_length=600
         )
+        dynamic_logger.info(f"{response_tags_rewrite=}")
+        response_tags_rewrite = remove_thought_tags(response_tags_rewrite)
+        dynamic_logger.info(f"cleaned {response_tags_rewrite=}")
         usages.append(usage)
 
         # rewrite entire rule
@@ -115,16 +123,18 @@ def check_rule_modification(input_rule_xml: str) -> str:
                 },
                 {
                     "role": "user",
-                    "content": "Rewrite the entire rule including these modifications:",
+                    "content": "Rewrite the entire rule to include these modifications:",
                 },
             ]
         )
 
         response_model_rule_rewrite, usage = call_gpt_with_backoff(
-            messages=message,
+            messages=messages,
             temperature=0,
             model="gpt-4-1106-preview",
+            max_length=1500,
         )
+        dynamic_logger.info(f"{response_model_rule_rewrite=}")
         usages.append(usage)
 
         # replace all instances of <suggestion> tags in `input_rule_xml` with the corresponding <suggestion> tags in `response_model_rule_rewrite`
