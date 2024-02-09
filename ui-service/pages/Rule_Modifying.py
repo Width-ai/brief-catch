@@ -77,7 +77,9 @@ def create_split_pr(rules: List[str]):
         for rule in rules:
             new_rule_name_match = re.search(name_regex_pattern, rule)
             new_rule_name = new_rule_name_match.group(1)
-            rules_to_update.append({"modified_rule_name": new_rule_name, "modified_rule": rule})
+            rules_to_update.append(
+                {"modified_rule_name": new_rule_name, "modified_rule": rule}
+            )
         if not rules_to_update:
             st.error("Could not create object to send for PR...")
         else:
@@ -436,7 +438,7 @@ elif modification_action == "Split":
 
     split_strategies = [
         "Split <or> tag",
-        "Rule is too broad",
+        # "Rule is too broad",
     ]
     split_strategy = st.selectbox(
         "How would you like to split?",
@@ -450,7 +452,11 @@ elif modification_action == "Split":
         additional_considerations = ""
         or_tags = re.findall(r"<or>.*?</or>", original_rule, re.DOTALL)
         if len(or_tags) > 0:
-            target_or_index = st.number_input("Index of <or> tag to split on (start counting with zero):", 0, len(or_tags)-1)
+            target_or_index = st.number_input(
+                "Index of <or> tag to split on (start counting with zero):",
+                0,
+                len(or_tags) - 1,
+            )
     elif split_strategy == split_strategies[1]:
         # split: rule too broad
         action = "toobroad"
