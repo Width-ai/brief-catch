@@ -274,7 +274,7 @@ def parse_rules_from_xml(xml_content: str) -> Dict:
     for rule in root.xpath(".//rule"):
         rule_name = rule.get("name")
         rule_str = etree.tostring(rule, encoding="unicode", pretty_print=True)
-        # NOTE: we want to remove alias whenever a rule gets passed to gpt. @abeukers did some manual combing through the codebase and calling it once here seems to provide full coverage of examples I detected.
+        # NOTE: we want to remove alias whenever a rule gets passed to gpt. @abeukers: I did some manual combing through the codebase and calling it once here seems to provide full coverage of examples I detected; anytime a rule is pulled frmo the from grammar.xml its done through `pull_xml_from_github` which calls this.
         rules_dict[rule_name] = resolve_alias_in_suggestion(rule_str.rstrip())
 
     return rules_dict
