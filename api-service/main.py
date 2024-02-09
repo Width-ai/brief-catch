@@ -319,7 +319,7 @@ def rule_rewriting(input_data: RuleInputData) -> JSONResponse:
         if input_data.element_action == "or":
             new_rules, usage = split_rule_by_or_operands(
                 input_rule=input_data.original_rule_text,
-                target_or_index=input_data.target_or_index
+                target_or_index=input_data.target_or_index,
             )
         elif input_data.element_action == "toobroad":
             new_rules, usage = split_broad_rule_with_instructions(

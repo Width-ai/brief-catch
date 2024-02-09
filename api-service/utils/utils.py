@@ -408,7 +408,9 @@ def update_rule_helper(rules_to_update: List[RuleToUpdate]) -> str:
                 if "." in rule.modified_rule_name:
                     original_rule_name = re.sub(r"\.\d+", "", rule.modified_rule_name)
                     if original_rule_name in rules_dict.keys():
-                        utils_logger.info(f"Removing rule {original_rule_name} from dictionary...")
+                        utils_logger.info(
+                            f"Removing rule {original_rule_name} from dictionary..."
+                        )
                         rules_dict.pop(original_rule_name)
             rules_dict[rule.modified_rule_name] = rule.modified_rule
 
@@ -519,11 +521,11 @@ def remove_thought_tags(text: str) -> str:
     Remove the thought tags from a string
     """
     # This pattern handles tags that span multiple lines and ignores case
-    thought_pattern = re.compile(r'<thought>.*?</thought>', re.DOTALL | re.IGNORECASE)
-    
+    thought_pattern = re.compile(r"<thought>.*?</thought>", re.DOTALL | re.IGNORECASE)
+
     # Substitute occurrences of the pattern with an empty string to remove them
-    cleaned_text = re.sub(thought_pattern, '', text)
-    
+    cleaned_text = re.sub(thought_pattern, "", text)
+
     return cleaned_text
 
 
