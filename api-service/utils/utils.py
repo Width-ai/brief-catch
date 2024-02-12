@@ -274,7 +274,8 @@ def parse_rules_from_xml(xml_content: str) -> Dict:
     for rule in root.xpath(".//rule"):
         rule_name = rule.get("name")
         rule_str = etree.tostring(rule, encoding="unicode", pretty_print=True)
-        rules_dict[rule_name] = rule_str.rstrip()
+        # NOTE: we want to remove alias whenever a rule gets passed to gpt. @abeukers: I did some manual combing through the codebase and calling it once here seems to provide full coverage of examples I detected; anytime a rule is pulled frmo the from grammar.xml its done through `pull_xml_from_github` which calls this.
+        rules_dict[rule_name] = resolve_alias_in_suggestion(rule_str.rstrip())
 
     return rules_dict
 
@@ -341,6 +342,20 @@ def rewrite_rule_helper(
     return call_gpt_with_backoff(
         messages=messages, model="gpt-4-1106-preview", temperature=0, max_length=1500
     )
+
+
+def resolve_alias_in_suggestion(rule_xml):
+    suggestion_tag_pattern = r"<suggestion>.*?</suggestion>"
+    suggest_tags = re.findall(suggestion_tag_pattern, rule_xml)
+    for old_suggest in suggest_tags:
+        pattern = r"\\\b([1-9][0-9]?|100)\b"
+        # print(1, old_suggest)
+        new_suggest = re.sub(
+            pattern, lambda x: f"""<match no="{x[0][1:]}"/>""", old_suggest
+        )
+        rule_xml = rule_xml.replace(old_suggest, new_suggest)
+        # print(2, new_suggest)
+    return rule_xml
 
 
 def create_new_branch(repo: Repository, branch_name: str):
