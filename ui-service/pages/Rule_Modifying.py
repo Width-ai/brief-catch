@@ -438,7 +438,7 @@ elif modification_action == "Split":
 
     split_strategies = [
         "Split <or> tag",
-        # "Rule is too broad",
+        "Rule is too broad",
     ]
     split_strategy = st.selectbox(
         "How would you like to split?",
