@@ -12,7 +12,11 @@ from utils.dynamic_prompting import (
 )
 from utils.logger import setup_logger
 from utils.rule_similarity import get_similar_template_rules
-from utils.utils import call_gpt_with_backoff, generate_simple_message, remove_thought_tags
+from utils.utils import (
+    call_gpt_with_backoff,
+    generate_simple_message,
+    remove_thought_tags,
+)
 
 
 dynamic_logger = setup_logger(__name__)
@@ -99,15 +103,12 @@ def check_rule_modification(input_rule_xml: str) -> Tuple[str, List[Dict]]:
             {"role": "assistant", "content": "No."},
             {
                 "role": "user",
-                "content": "Rewrite the <suggestion> and <example> tags to be correct. Think about what the example tag should be before writing it, paying special attention when placing <marker> tags. The <marker> tags **must** surround text that matches the pattern of the rule. Surround these thoughts in <thought> tags:",
+                "content": "Rewrite the <suggestion> and <example> tags to be correct. Think about what the example tag should be before writing it, paying special attention when placing <marker> tags. If the rule has an <antipattern>, make sure that there is one (and only one) <example> per <antipattern>. The <marker> tags **must** surround text that matches the pattern of the rule. Surround these thoughts in <thought> tags:",
             },
         ]
 
         response_tags_rewrite, usage = call_gpt_with_backoff(
-            messages=messages,
-            temperature=0,
-            model="gpt-4-1106-preview",
-            max_length=600
+            messages=messages, temperature=0, model="gpt-4-1106-preview", max_length=600
         )
         dynamic_logger.info(f"{response_tags_rewrite=}")
         response_tags_rewrite = remove_thought_tags(response_tags_rewrite)

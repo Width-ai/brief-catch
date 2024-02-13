@@ -326,7 +326,20 @@ def rule_rewriting(input_data: RuleInputData) -> JSONResponse:
                 input_data.original_rule_text,
                 input_data.specific_actions[0],
             )
-        return JSONResponse(content={"response": new_rules, "usage": usage})
+        # validate rules and calculate total usage
+        new_rules_verified = []
+        all_usages = [usage]
+        for r in new_rules:
+            validated_rule, _usage = check_rule_modification(r)
+            new_rules_verified.append(validated_rule)
+            all_usages.append(_usage)
+        combined_usage = combine_all_usages(all_usages)
+        return JSONResponse(
+            content={
+                "response": new_rules,
+                "usage": combined_usage,
+            }
+        )
     except Exception as e:
         logger.error(e)
         return JSONResponse(content={"error": str(e)}, status_code=500)
