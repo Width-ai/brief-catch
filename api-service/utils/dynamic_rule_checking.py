@@ -17,6 +17,7 @@ from utils.utils import (
     generate_simple_message,
     remove_thought_tags,
 )
+from postag_regexp_fixing import post_process_rule_xml
 
 
 dynamic_logger = setup_logger(__name__)
@@ -94,7 +95,7 @@ def check_rule_modification(input_rule_xml: str) -> Tuple[str, List[Dict]]:
 
     # check response and ask for correction if necessary
     if "yes" in response[:3].lower():
-        return input_rule_xml, usages
+        validated_rule_xml = input_rule_xml
     elif "no" in response[:3].lower():
         # rewrite suggestion and example tags
         messages = [
@@ -151,5 +152,7 @@ def check_rule_modification(input_rule_xml: str) -> Tuple[str, List[Dict]]:
             new_rule_xml,
             response_model_rule_rewrite,
         )
-
-        return new_rule_xml, usages
+        validated_rule_xml = new_rule_xml
+    # post process
+    validated_rule_xml = post_process_rule_xml(validated_rule_xml)
+    return validated_rule_xml, usages
