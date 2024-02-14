@@ -332,7 +332,7 @@ def rule_rewriting(input_data: RuleInputData) -> JSONResponse:
         for r in new_rules:
             validated_rule, _usage = check_rule_modification(r)
             new_rules_verified.append(validated_rule)
-            all_usages.append(_usage)
+            all_usages.extend(_usage)
         combined_usage = combine_all_usages(all_usages)
         return JSONResponse(
             content={
