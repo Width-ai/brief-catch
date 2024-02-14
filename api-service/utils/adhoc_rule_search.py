@@ -21,7 +21,7 @@ nlp = spacy.load("en_core_web_sm")
 VERBS_THAT_NEED_HELP = ["center"]
 OTHER_VERBS_THAT_NEED_HELP = ["focus"]
 PARTS_OF_SPEECH = sorted(
-    ["VB", "NNS", "JJ", "V.*?", "VBG", "VBN", "VBD", "VBZ", "VBP", "NN", "NN:U", "NN:UN", "NNP", "PRP.*", "N.*?", "JJ.*?", "IN", "CC", "DT", "EX", "LS", "MD", "POS", "RB", "RBR", "RBS", "UH"],
+    ["VB", "NNS", "JJ", "V.*?", "VBG", "VBN", "VBD", "VBZ", "VBP", "NN", "NN:U", "NN:UN", "NNP", "PRP.*", "PRP", "N.*?", "JJ.*?", "IN", "CC", "DT", "EX", "LS", "MD", "POS", "RB", "RBR", "RBS", "UH"],
     key=len,
     reverse=True
 )
@@ -505,8 +505,6 @@ def filter_matches_on_pos_tag(rule: str, matches: List[Dict]) -> List[Dict]:
     for token_index, token in enumerate(rule_tokens):
         if "CT(" in token:
             tokens_to_check.append({"index": token_index, "pos": "V.*?", "required": "~" not in token})
-            # Stop after the first (most specific) match
-            break
         else:
             for pos in PARTS_OF_SPEECH:
                 if pos in token:
@@ -553,11 +551,14 @@ def filter_suggestion_matches_on_pos_tag(suggestion_filter: str, suggestion_rege
     suggestion_tokens = [token for token in suggestion_tokens if token not in PUNCTUATIONS]
     tokens_to_check = []
     for token_index, token in enumerate(suggestion_tokens):
-        for pos in PARTS_OF_SPEECH:
-            if pos in token:
-                tokens_to_check.append({"index": token_index, "pos": pos, "required": "~" not in token})
-                # Stop after the first (most specific) match
-                break
+        if "CT(" in token:
+            tokens_to_check.append({"index": token_index, "pos": "V.*?", "required": "~" not in token})
+        else:
+            for pos in PARTS_OF_SPEECH:
+                if pos in token:
+                    tokens_to_check.append({"index": token_index, "pos": pos, "required": "~" not in token})
+                    # Stop after the first (most specific) match
+                    break
     adhoc_logger.info(f"{tokens_to_check=}")
     # if no tokens need to be checked, return all the matches
     if not tokens_to_check:
