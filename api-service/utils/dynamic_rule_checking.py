@@ -17,7 +17,7 @@ from utils.utils import (
     generate_simple_message,
     remove_thought_tags,
 )
-from postag_regexp_fixing import post_process_rule_xml
+from regexp_validation import post_process_xml
 
 
 dynamic_logger = setup_logger(__name__)
@@ -154,5 +154,5 @@ def check_rule_modification(input_rule_xml: str) -> Tuple[str, List[Dict]]:
         )
         validated_rule_xml = new_rule_xml
     # post process
-    validated_rule_xml = post_process_rule_xml(validated_rule_xml)
+    validated_rule_xml = post_process_xml(validated_rule_xml)
     return validated_rule_xml, usages
