@@ -163,6 +163,6 @@ def validate_modified_rule(xml):
     xml = post_process_xml(xml)
     xml, usage = check_rule_modification(xml)
     usages.extend(usage)
-    xml, usages = validate_suggestion(xml)
+    xml, usage = validate_suggestion(xml)
     usages.extend(usage)
     return xml, usages
