@@ -61,7 +61,7 @@ Matching example:
 --------
 
 
-Given the input rule, following all instructions, write any examples that are missing that are needed to make it a valid rule. Think through what example tags will be needed to complete the rule. You should respond in JSON format. Specifically there should be 1. a string field `thought` that where you show your thoughts around how to write a valid example xml; and 2. an array field `suggestions` where each item is an example tag. 
+Given the input rule, use the above instructions to validate the example tags. Specifically, (a) if an example tag is correct, DO NOT CHANGE IT; (b) write any examples that are missing; (c) rewrite examples that need to be corrected. Before making a decision, you should think through what example tags will be needed to be (a) kept, (b) added (c) rewritten to ensure this is a valid rule. You should respond in the following JSON format with the following fields: 1. a string field `thought` where you show your thought thought process around which rules should be kept, added or rewritten; an array field `examples` where each item is an example tag. make sure that the `examples` array contains all example tags, whether they were kept un changed, added or modified. 
 """
 
 

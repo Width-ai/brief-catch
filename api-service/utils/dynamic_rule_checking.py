@@ -161,8 +161,8 @@ def validate_modified_rule(xml):
     usages = []
     # post process
     xml = post_process_xml(xml)
-    xml, usage = check_rule_modification(xml)
-    usages.extend(usage)
     xml, usage = validate_suggestion(xml)
+    usages.extend(usage)
+    xml, usage = check_rule_modification(xml)
     usages.extend(usage)
     return xml, usages
