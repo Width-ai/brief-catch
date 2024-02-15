@@ -18,7 +18,7 @@ from utils.utils import (
     remove_thought_tags,
 )
 from regexp_validation import post_process_xml
-
+from suggestion_tag_validation import validate_suggestion
 
 dynamic_logger = setup_logger(__name__)
 
@@ -153,6 +153,16 @@ def check_rule_modification(input_rule_xml: str) -> Tuple[str, List[Dict]]:
             response_model_rule_rewrite,
         )
         validated_rule_xml = new_rule_xml
-    # post process
-    validated_rule_xml = post_process_xml(validated_rule_xml)
+
     return validated_rule_xml, usages
+
+
+def validate_modified_rule(xml):
+    usages = []
+    # post process
+    xml = post_process_xml(xml)
+    xml, usage = check_rule_modification(xml)
+    usages.extend(usage)
+    xml, usages = validate_suggestion(xml)
+    usages.extend(usage)
+    return xml, usages

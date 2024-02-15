@@ -38,11 +38,11 @@ from utils.utils import (
     create_df_from_analysis_data,
     combine_all_usages,
 )
-from utils.dynamic_rule_checking import check_rule_modification
 from utils.rule_splitting import (
     split_rule_by_or_operands,
     split_broad_rule_with_instructions,
 )
+from utils.dynamic_rule_checking import validate_modified_rule
 
 
 logger = setup_logger(__name__)
@@ -233,7 +233,7 @@ def rule_rewriting(input_data: RuleInputData) -> JSONResponse:
             specific_actions=input_data.specific_actions,
         )
         response = response.replace("```xml\n", "").replace("\n```", "")
-        response, usages = check_rule_modification(response)
+        response, usages = validate_modified_rule(response)
         all_usages = [usage] + usages
         combined_usage = combine_all_usages(all_usages)
         return JSONResponse(content={"response": response, "usage": combined_usage})
@@ -286,7 +286,7 @@ async def bulk_rule_rewriting(csv_file: UploadFile = File(...)) -> JSONResponse:
                 modified_rule_text = modified_rule_text.replace("```xml\n", "").replace(
                     "\n```", ""
                 )
-                modified_rule_text, usages = check_rule_modification(modified_rule_text)
+                modified_rule_text, usages = validate_modified_rule(modified_rule_text)
                 responses.append(
                     {
                         "original_rule_id": rule_id,
@@ -330,7 +330,7 @@ def rule_rewriting(input_data: RuleInputData) -> JSONResponse:
         new_rules_verified = []
         all_usages = [usage]
         for r in new_rules:
-            validated_rule, _usage = check_rule_modification(r)
+            validated_rule, _usage = validate_modified_rule(r)
             new_rules_verified.append(validated_rule)
             all_usages.extend(_usage)
         combined_usage = combine_all_usages(all_usages)
@@ -380,7 +380,7 @@ async def create_rule(input_data: CreateRuleInput) -> JSONResponse:
         )
         new_id = "".join(str(random.randint(0, 9)) for _ in range(40))
         response = response.replace("{new_rule_id}", f"BRIEFCATCH_{new_id}")
-        response, usages = check_rule_modification(response)
+        response, usages = validate_modified_rule(response)
         all_usages = [usage] + usages
         combined_usage = combine_all_usages(all_usages)
         return JSONResponse(content={"response": response, "usage": combined_usage})
@@ -443,7 +443,7 @@ async def bulk_rule_creation(csv_file: UploadFile = File(...)) -> JSONResponse:
             new_id = "".join(str(random.randint(0, 9)) for _ in range(40))
             response = response.replace("{new_rule_id}", f"BRIEFCATCH_{new_id}")
             new_rule_name = f"BRIEFCATCH_{record.get('category').upper()}_{record.get('rule_number')}"
-            new_rule_name, usages = check_rule_modification(new_rule_name)
+            new_rule_name, usages = validate_modified_rule(new_rule_name)
             responses.append(
                 {"rule_name": new_rule_name, "rule": response, "usage": usage}
             )
