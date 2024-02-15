@@ -1,6 +1,6 @@
 from utils.utils import call_gpt_with_backoff, generate_simple_message
 import json
-
+import re
 
 PROMPT = """
 # Task
@@ -72,6 +72,7 @@ def validate_suggestion(xml):
         message,
         response_format="json_object",
         model="gpt-4-0125-preview",
+        temperature=0,
     )
 
     # TODO: if bad json, retry model call
@@ -80,6 +81,7 @@ def validate_suggestion(xml):
     except json.JSONDecodeError:  # Specifically catch JSON errors
         print("bad json")
 
+    xml = re.sub(r"\n    <example.*?>.*?</example>", "", xml)
     suggestion_section = "\n" + "\n".join(["    " + s for s in suggestions])
     end_of_xml_ix = -(len("<rule/>") + 2)
     xml_out = xml[:end_of_xml_ix] + suggestion_section + xml[end_of_xml_ix:]
