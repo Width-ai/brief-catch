@@ -1,9 +1,11 @@
+from typing import List
 import re
 from typing import List
 from domain.constants import PARTS_OF_SPEECH
 from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
+
 
 def get_tags_with_postag(xml: str) -> List[str]:
     matchtag_pattern = r"<match.*?postag.*?>"
@@ -70,38 +72,46 @@ def validate_token_regexp(xml: str) -> str:
             exception_content = exception_match.group(0)
             if is_complex_regexp(exception_content):
                 if 'regexp="yes"' not in exception_content:
-                    corrected_tag = exception_content.replace('<exception', '<exception regexp="yes"')
+                    corrected_tag = exception_content.replace(
+                        "<exception", '<exception regexp="yes"'
+                    )
                     xml = xml.replace(exception_content, corrected_tag)
             else:
                 # remove the attribute if not complex
-                corrected_tag = exception_content.replace(' regexp="yes"', '')
+                corrected_tag = exception_content.replace(' regexp="yes"', "")
                 xml = xml.replace(exception_content, corrected_tag)
-        
+
         # Extract the content of the token tag (re pull the tag after changing the original xml)
         tag = re.findall(r"<token.*?>.*?</token>", xml, flags=re.DOTALL)[index]
         token_content_match = re.search(r"<token.*?>.*?</token>", tag, flags=re.DOTALL)
 
         if token_content_match:
             token_content = token_content_match.group(0)
-            exception_match = re.search(r"<exception.*?>.*?</exception>", token_content, flags=re.DOTALL)
+            exception_match = re.search(
+                r"<exception.*?>.*?</exception>", token_content, flags=re.DOTALL
+            )
             if exception_match:
-                token_content = re.sub(r"<exception.*?>.*?</exception>", "", token_content)
+                token_content = re.sub(
+                    r"<exception.*?>.*?</exception>", "", token_content
+                )
             if is_complex_regexp(token_content):
                 # ensure that regexp="yes" is present in complex regexp
                 if 'regexp="yes"' not in tag:
-                    corrected_tag = tag[:len("<token")] + ' regexp="yes"' + tag[len("<token"):]
+                    corrected_tag = (
+                        tag[: len("<token")] + ' regexp="yes"' + tag[len("<token") :]
+                    )
                     xml = xml.replace(tag, corrected_tag)
             else:
                 # ensure that regexp="yes" is NOT present in simple regexp
                 token_open_tag = re.search(r"<token.*?>", tag, flags=re.DOTALL).group(0)
-                corrected_open_tag = token_open_tag.replace(' regexp="yes"', '')
+                corrected_open_tag = token_open_tag.replace(' regexp="yes"', "")
                 corrected_tag = tag.replace(token_open_tag, corrected_open_tag)
                 xml = xml.replace(tag, corrected_tag)
     return xml
 
 
 def check_markers_in_examples(xml: str) -> str:
-    examples = re.findall(r'<example.*?>.*?<\/example>', xml, flags=re.DOTALL)
+    examples = re.findall(r"<example.*?>.*?<\/example>", xml, flags=re.DOTALL)
     for example in examples:
         new_example = ""
         if 'correction=""' in example:
@@ -112,8 +122,43 @@ def check_markers_in_examples(xml: str) -> str:
     return xml
 
 
+# alphabetize operands
+
+
+def get_value_of_tag(tag_name, xml) -> List[str]:
+    return re.findall(rf"<{tag_name}.*?>(.*?)</{tag_name}>", xml)
+
+
+def alphabetize_operands_in_string(s) -> str:
+    """
+    assumes input string contains logical OR. e.g.
+        s = "can|case|contract|counsel|court|dissent|district|equal|even|evidence|found|jail|judge|motion|people|respect|source|still|that|title|trial|up|view|while|will|you|us|congress|as|myself"
+    """
+    if "|" not in s:
+        return s
+    return "|".join(sorted(s.split("|")))
+
+
+def alphabetize_operands_in_tag(tag_name: str, xml: str) -> str:
+    """loops through all instances of `tag_name` in xml and alphabetizes their operands"""
+    for tag_value in get_value_of_tag(tag_name, xml):
+        if "|" in tag_value:
+            print(tag_value)
+            new_tag_value = alphabetize_operands(tag_value)
+            xml = xml.replace(tag_value, new_tag_value)
+    return xml
+
+
+def alphabetize_operands(xml: str, tags_to_alphabetize=["token", "exception"]):
+    for tag_name in tags_to_alphabetize:
+        xml = alphabetize_operands_in_tag(tag_name, xml)
+    return xml
+
+
+# main
 def post_process_xml(xml: str) -> str:
     xml = validate_postag_regexp(xml)
     xml = validate_token_regexp(xml)
+    xml = alphabetize_operands(xml)
     xml = check_markers_in_examples(xml)
     return xml
