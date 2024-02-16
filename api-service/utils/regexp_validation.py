@@ -1,16 +1,17 @@
 import re
+from typing import List
 from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 
-def get_tags_with_postag(xml):
+def get_tags_with_postag(xml: str) -> List[str]:
     matchtag_pattern = r"<match.*?postag.*?>"
     tokentag_pattern = r"<token.*?postag.*?>"
     # TODO: exception tag?
     return re.findall(Rf"""({matchtag_pattern}|{tokentag_pattern})""", xml)
 
 
-def get_postag_value(xml):
+def get_postag_value(xml: str) -> List[str]:
     return re.findall(r'postag="(.*?)"', xml)
 
 
@@ -96,7 +97,20 @@ def validate_token_regexp(xml: str) -> str:
     return xml
 
 
-def post_process_xml(xml):
+def check_markers_in_examples(xml: str) -> str:
+    examples = re.findall(r'<example.*?>.*?<\/example>', xml, flags=re.DOTALL)
+    for example in examples:
+        new_example = ""
+        if 'correction=""' in example:
+            new_example = example.replace('correction=""', "")
+        if "<marker>" in example and 'correction="' not in example:
+            new_example = example.replace("<marker>", "").replace("</marker>", "")
+            xml = xml.replace(example, new_example)
+    return xml
+
+
+def post_process_xml(xml: str) -> str:
     xml = validate_postag_regexp(xml)
     xml = validate_token_regexp(xml)
+    xml = check_markers_in_examples(xml)
     return xml
