@@ -1,7 +1,6 @@
 from dotenv import load_dotenv
 
 load_dotenv()
-import concurrent
 import json
 import openai
 import os
