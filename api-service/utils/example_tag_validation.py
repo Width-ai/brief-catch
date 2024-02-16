@@ -1,3 +1,4 @@
+import xml.etree.ElementTree as ET
 import json
 import re
 from typing import Dict, List, Tuple
@@ -113,9 +114,6 @@ def replace_examples(xml, examples: List):
     for example in examples:
         xml = append_example(xml, example)
     return xml
-
-
-import xml.etree.ElementTree as ET
 
 
 def append_example(xml_string, example_xml_string):
