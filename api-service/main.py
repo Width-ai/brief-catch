@@ -1,13 +1,13 @@
 from dotenv import load_dotenv
 
 load_dotenv()
-
 import json
 import openai
 import os
 import random
 import pandas as pd
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import StringIO, BytesIO
 from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -242,6 +242,39 @@ def rule_rewriting(input_data: RuleInputData) -> JSONResponse:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 
+def process_modifications(rule_id: str, modifications: pd.DataFrame) -> Dict:
+    logger.info(f"Processing {rule_id=} with modifications: {modifications=}")
+    try:
+        original_rule_text, original_rule_name = fetch_rule_by_id(rule_id)
+        modified_rule_text = original_rule_text
+
+        if original_rule_text:
+            for _, modification in modifications.iterrows():
+                modified_rule_text, usage = rewrite_rule_helper(
+                    original_rule=modified_rule_text,
+                    target_element=modification["target element"],
+                    element_action=modification["action to take"],
+                    specific_actions=modification["specific actions"],
+                )
+
+            modified_rule_text = modified_rule_text.replace("```xml\n", "").replace("\n```", "")
+            modified_rule_text, usages = check_rule_modification(modified_rule_text)
+            return {
+                "original_rule_id": rule_id,
+                "original_rule_name": original_rule_name,
+                "response": modified_rule_text,
+                "usage": usage,
+            }
+        else:
+            logger.error(f"No rule found for id {rule_id}")
+            return f"No rule found for id {rule_id}"
+    except Exception as e:
+        error_message = f"Error modifying rule ID {rule_id}: {e}"
+        logger.error(error_message)
+        logger.exception(e)
+        return error_message
+
+
 @app.post("/bulk-rule-rewriting")
 async def bulk_rule_rewriting(csv_file: UploadFile = File(...)) -> JSONResponse:
     """
@@ -269,40 +302,14 @@ async def bulk_rule_rewriting(csv_file: UploadFile = File(...)) -> JSONResponse:
     errors = []
     rule_modifications = df.groupby("xml rule")
 
-    for rule_id, modifications in rule_modifications:
-        try:
-            original_rule_text, original_rule_name = fetch_rule_by_id(rule_id)
-            modified_rule_text = original_rule_text
+    with ThreadPoolExecutor(max_workers=min(32, (os.cpu_count() or 1) + 4)) as executor:
+        # submit all matches to the executor
+        future_to_match = {executor.submit(process_modifications, rule_id, modifications): rule_id for rule_id, modifications in rule_modifications}
 
-            if original_rule_text:
-                for _, modification in modifications.iterrows():
-                    modified_rule_text, usage = rewrite_rule_helper(
-                        original_rule=modified_rule_text,
-                        target_element=modification["target element"],
-                        element_action=modification["action to take"],
-                        specific_actions=modification["specific actions"],
-                    )
-
-                modified_rule_text = modified_rule_text.replace("```xml\n", "").replace(
-                    "\n```", ""
-                )
-                modified_rule_text, usages = check_rule_modification(modified_rule_text)
-                responses.append(
-                    {
-                        "original_rule_id": rule_id,
-                        "original_rule_name": original_rule_name,
-                        "response": modified_rule_text,
-                        "usage": usage,
-                    }
-                )
-            else:
-                logger.error(f"No rule found for id {rule_id}")
-                errors.append(f"No rule found for id {rule_id}")
-        except Exception as e:
-            error_message = f"Error modifying rule ID {rule_id}: {e}"
-            logger.error(error_message)
-            logger.exception(e)
-            errors.append(error_message)
+        # collect the results from the futures as they are completed
+        results = [future.result() for future in as_completed(future_to_match) if future.result() is not None]
+        responses = [result for result in results if not isinstance(result, str)]
+        errors = [result for result in results if isinstance(result, str)]
 
     status_code = 200 if responses else 500
     return JSONResponse(
