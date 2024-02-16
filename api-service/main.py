@@ -322,6 +322,7 @@ def rule_rewriting(input_data: RuleInputData) -> JSONResponse:
                 target_or_index=input_data.target_or_index,
             )
         elif input_data.element_action == "toobroad":
+            logger.info("splitting rule that is toobroad")
             new_rules, usage = split_broad_rule_with_instructions(
                 input_data.original_rule_text,
                 input_data.specific_actions[0],
@@ -329,6 +330,7 @@ def rule_rewriting(input_data: RuleInputData) -> JSONResponse:
         # validate rules and calculate total usage
         new_rules_verified = []
         all_usages = [usage]
+        logger.info("validating modified rules")
         for r in new_rules:
             validated_rule, _usage = validate_modified_rule(r)
             new_rules_verified.append(validated_rule)

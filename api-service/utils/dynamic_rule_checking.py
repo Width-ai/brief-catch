@@ -161,9 +161,12 @@ def check_rule_modification(input_rule_xml: str) -> Tuple[str, List[Dict]]:
 def validate_modified_rule(xml: str) -> Tuple[str, List[Dict]]:
     usages = []
     # post process
+    dynamic_logger.info("post processing: regexp validation")
     xml = post_process_xml(xml)
+    dynamic_logger.info("post processing: validating example tags")
     xml, usage = validate_examples(xml)
     usages.extend(usage)
+    dynamic_logger.info("post processing: catch all checker")
     xml, usage = check_rule_modification(xml)
     usages.extend(usage)
     return xml, usages
