@@ -11,13 +11,13 @@ from utils.dynamic_prompting import (
     replace_all_instances_of_tag,
 )
 from utils.logger import setup_logger
+from utils.regexp_validation import post_process_xml
 from utils.rule_similarity import get_similar_template_rules
 from utils.utils import (
     call_gpt_with_backoff,
     generate_simple_message,
     remove_thought_tags,
 )
-from regexp_validation import post_process_xml
 
 
 dynamic_logger = setup_logger(__name__)
@@ -104,7 +104,7 @@ def check_rule_modification(input_rule_xml: str) -> Tuple[str, List[Dict]]:
             {"role": "assistant", "content": "No."},
             {
                 "role": "user",
-                "content": "Rewrite the <suggestion> and <example> tags to be correct. Think about what the example tag should be before writing it, paying special attention when placing <marker> tags. If the rule has an <antipattern>, make sure that there is one (and only one) <example> per <antipattern>. The <marker> tags **must** surround text that matches the pattern of the rule. Surround these thoughts in <thought> tags:",
+                "content": "Rewrite the <suggestion> and <example> tags to be correct. Think about what the example tag should be before writing it, paying special attention when placing <marker> tags. If the rule has an <antipattern>, make sure that there is one (and only one) <example> per <antipattern>. The <marker> tags **must** surround text that matches the pattern of the rule. Surround your thoughts with <thought>...</thoughts> tags then write the corrected tags with no other text:",
             },
         ]
 
