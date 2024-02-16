@@ -11,13 +11,14 @@ from utils.dynamic_prompting import (
     replace_all_instances_of_tag,
 )
 from utils.logger import setup_logger
+from utils.regexp_validation import post_process_xml
 from utils.rule_similarity import get_similar_template_rules
+from utils.example_tag_validation import validate_examples
 from utils.utils import (
     call_gpt_with_backoff,
     generate_simple_message,
     remove_thought_tags,
 )
-from regexp_validation import post_process_xml
 
 
 dynamic_logger = setup_logger(__name__)
@@ -153,6 +154,19 @@ def check_rule_modification(input_rule_xml: str) -> Tuple[str, List[Dict]]:
             response_model_rule_rewrite,
         )
         validated_rule_xml = new_rule_xml
-    # post process
-    validated_rule_xml = post_process_xml(validated_rule_xml)
+
     return validated_rule_xml, usages
+
+
+def validate_modified_rule(xml: str) -> Tuple[str, List[Dict]]:
+    usages = []
+    # post process
+    dynamic_logger.info("post processing: regexp validation")
+    xml = post_process_xml(xml)
+    dynamic_logger.info("post processing: validating example tags")
+    xml, usage = validate_examples(xml)
+    usages.extend(usage)
+    dynamic_logger.info("post processing: catch all checker")
+    xml, usage = check_rule_modification(xml)
+    usages.extend(usage)
+    return xml, usages

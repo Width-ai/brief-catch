@@ -59,12 +59,17 @@ def call_gpt_with_backoff(
     model: str = "gpt-4",
     temperature: float = 0.7,
     max_length: int = 256,
+    **kwargs,
 ) -> Tuple[str, Dict]:
     """
     Generic function to call GPT4 with specified messages
     """
     return call_gpt(
-        model=model, messages=messages, temperature=temperature, max_length=max_length
+        model=model,
+        messages=messages,
+        temperature=temperature,
+        max_length=max_length,
+        **kwargs,
     )
 
 
