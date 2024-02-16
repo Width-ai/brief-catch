@@ -55,30 +55,44 @@ def validate_postag_regexp(xml: str) -> str:
 
 def validate_token_regexp(xml: str) -> str:
     # grab all token tags
-    token_tags = re.findall(r"<token.*?>.*?</token>", xml)
+    token_tags = re.findall(r"<token.*?>.*?</token>", xml, flags=re.DOTALL)
     if len(token_tags) == 0:
         return xml
-    for tag in token_tags:
-        # token_tag_value = re.findall(r"<token.*?>(.*?)</token>", xml)[0]
-        if is_complex_regexp(tag):
-            # TODO: what if the regex is in the exception like this:
-            # '<token regexp="yes" inflected="yes">call<exception>a|all|his|me|the</exception></token>'
-            
-            # ensure that regexp=yes is present in complex regexp
-            if 'regexp="yes"' not in tag:
-                corrected_tag = (
-                    tag[: len("<token")] + ' regexp="yes"' + tag[len("<token") :]
-                )
-                # update xml
+
+    for index, tag in enumerate(token_tags):
+        # Handling exceptions: if there's an exception tag, skip regexp="yes" for the token tag
+        exception_match = re.search(r"<exception>.*?</exception>", tag, flags=re.DOTALL)
+        if exception_match:
+            exception_content = exception_match.group(0)
+            if is_complex_regexp(exception_content):
+                if 'regexp="yes"' not in exception_content:
+                    corrected_tag = exception_content.replace('<exception', '<exception regexp="yes"')
+                    xml = xml.replace(exception_content, corrected_tag)
+            else:
+                # remove the attribute if not complex
+                corrected_tag = exception_content.replace(' regexp="yes"', '')
+                xml = xml.replace(exception_content, corrected_tag)
+        
+        # Extract the content of the token tag (re pull the tag after changing the original xml)
+        tag = re.findall(r"<token.*?>.*?</token>", xml, flags=re.DOTALL)[index]
+        token_content_match = re.search(r"<token.*?>.*?</token>", tag, flags=re.DOTALL)
+
+        if token_content_match:
+            token_content = token_content_match.group(0)
+            exception_match = re.search(r"<exception.*?>.*?</exception>", token_content, flags=re.DOTALL)
+            if exception_match:
+                token_content = re.sub(r"<exception.*?>.*?</exception>", "", token_content)
+            if is_complex_regexp(token_content):
+                # ensure that regexp="yes" is present in complex regexp
+                if 'regexp="yes"' not in tag:
+                    corrected_tag = tag[:len("<token")] + ' regexp="yes"' + tag[len("<token"):]
+                    xml = xml.replace(tag, corrected_tag)
+            else:
+                # ensure that regexp="yes" is NOT present in simple regexp
+                token_open_tag = re.search(r"<token.*?>", tag, flags=re.DOTALL).group(0)
+                corrected_open_tag = token_open_tag.replace(' regexp="yes"', '')
+                corrected_tag = tag.replace(token_open_tag, corrected_open_tag)
                 xml = xml.replace(tag, corrected_tag)
-        else:
-            # ensure that regexp=yes is NOT present in simple regexp
-            # NOTE: to want to remove space before XOR after
-            patterns = [r'regexp="yes" ', r' regexp="yes"']
-            corrected_tag = tag
-            for p in patterns:
-                corrected_tag = re.sub(p, "", corrected_tag)
-            xml = re.sub(tag, corrected_tag, xml)
     return xml
 
 
