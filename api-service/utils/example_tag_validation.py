@@ -80,7 +80,7 @@ You should respond in the following JSON format with the following fields:
 """
 
 
-def validate_examples(xml: str, max_retry: int = 5) -> Tuple[str, List[Dict]]:
+def generate_corrected_examples(xml, max_retry=5):
     examples = None
     retries = 0
     usages = []
@@ -103,11 +103,37 @@ def validate_examples(xml: str, max_retry: int = 5) -> Tuple[str, List[Dict]]:
         except json.JSONDecodeError:
             # Specifically catch JSON errors
             logger.error("bad json, retrying...")
+    return examples, usages
 
+
+def replace_examples(xml, examples: List):
+    """
+    counts back from the end of the xml string by the number of characters in the "<rule/> substring, then inserts the list
+    """
+    for example in examples:
+        xml = append_example(xml, example)
+    return xml
+
+
+import xml.etree.ElementTree as ET
+
+
+def append_example(xml_string, example_xml_string):
+    # parse the original XML string into an ElementTree object
+    root = ET.fromstring(xml_string)
+    example_root = ET.fromstring(f"<root>{example_xml_string}\n</root>")
+    new_example = example_root[0]
+    # append the new example tag
+    root.append(new_example)
+    updated_xml_string = ET.tostring(root, encoding="unicode")
+    # corrections to stylistic choices by ET
+    updated_xml_string = updated_xml_string.replace(" />", "/>")
+    # updated_xml_string += "\n"
+    return updated_xml_string
+
+
+def validate_examples(xml: str, max_retry: int = 5) -> Tuple[str, List[Dict]]:
+    examples, usages = generate_corrected_examples(xml, max_retry)
     if examples:
-        xml = re.sub(r"\n    <example.*?>.*?</example>", "", xml)
-        example_section = "\n" + "\n".join(["    " + s for s in examples])
-        end_of_xml_ix = -(len("<rule/>") + 2)
-        xml_out = xml[:end_of_xml_ix] + example_section + xml[end_of_xml_ix:]
-        return xml_out, usages
+        xml = replace_examples(xml, examples)
     return xml, usages
