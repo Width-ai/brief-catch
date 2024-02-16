@@ -133,5 +133,6 @@ def append_example(xml_string, example_xml_string):
 def validate_examples(xml: str, max_retry: int = 5) -> Tuple[str, List[Dict]]:
     examples, usages = generate_corrected_examples(xml, max_retry)
     if examples:
+        logger.info("example tag replacements required")
         xml = replace_examples(xml, examples)
     return xml, usages
