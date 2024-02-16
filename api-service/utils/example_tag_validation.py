@@ -1,9 +1,12 @@
-from utils.utils import call_gpt_with_backoff, generate_simple_message
 import json
 import re
+from typing import Dict, List, Tuple
+from utils.logger import setup_logger
+from utils.utils import call_gpt_with_backoff, generate_simple_message
 
-PROMPT = """
-# Task
+logger = setup_logger(__name__)
+
+SYSTEM_PROMPT = """# Task
 You are a system focused on making sure the XML rule <pattern> and <antipattern> tags match with the <example> tags. 
 
 # Pattern -> Example rules
@@ -61,28 +64,50 @@ Matching example:
 --------
 
 
-Given the input rule, use the above instructions to validate the example tags. Specifically, (a) if an example tag is correct, DO NOT CHANGE IT; (b) write any examples that are missing; (c) rewrite examples that need to be corrected. Before making a decision, you should think through what example tags will be needed to be (a) kept, (b) added (c) rewritten to ensure this is a valid rule. You should respond in the following JSON format with the following fields: 1. a string field `thought` where you show your thought thought process around which rules should be kept, added or rewritten; an array field `examples` where each item is an example tag. make sure that the `examples` array contains all example tags, whether they were kept un changed, added or modified. 
+Given the input rule, use the above instructions to validate the example tags. Specifically:
+(a) if an example tag is correct, DO NOT CHANGE IT;
+(b) write any examples that are missing;
+(c) rewrite examples that need to be corrected.
+
+Before making a decision, you should think through what example tags will be needed to be
+(a) kept
+(b) added
+(c) rewritten to ensure this is a valid rule.
+
+You should respond in the following JSON format with the following fields:
+1. `thought`: a string field where you show your thought process around which rules should be kept, added or rewritten;
+2. `examples`: an array field where each item is an example tag. Make sure that the `examples` array contains all example tags, whether they were kept unchanged, added or modified. 
 """
 
 
-def validate_suggestion(xml):
-    system_prompt = PROMPT
-    message = generate_simple_message(system_prompt, xml)
-    resp, usage = call_gpt_with_backoff(
-        message,
-        response_format="json_object",
-        model="gpt-4-0125-preview",
-        temperature=0,
-    )
+def validate_examples(xml: str, max_retry: int = 5) -> Tuple[str, List[Dict]]:
+    examples = None
+    retries = 0
+    usages = []
 
-    # TODO: if bad json, retry model call
-    try:
-        suggestions = json.loads(resp)["suggestions"]
-    except json.JSONDecodeError:  # Specifically catch JSON errors
-        print("bad json")
+    while examples is None and retries < max_retry:
+        retries += 1
+        message = generate_simple_message(SYSTEM_PROMPT, xml)
+        resp, usage = call_gpt_with_backoff(
+            message,
+            response_format="json_object",
+            model="gpt-4-0125-preview",
+            temperature=0,
+            max_length=1000,
+        )
+        usages.append(usage)
+        logger.info(f"{resp=}")
 
-    xml = re.sub(r"\n    <example.*?>.*?</example>", "", xml)
-    suggestion_section = "\n" + "\n".join(["    " + s for s in suggestions])
-    end_of_xml_ix = -(len("<rule/>") + 2)
-    xml_out = xml[:end_of_xml_ix] + suggestion_section + xml[end_of_xml_ix:]
-    return xml_out, usage
+        try:
+            examples = json.loads(resp)["examples"]
+        except json.JSONDecodeError:
+            # Specifically catch JSON errors
+            logger.error("bad json, retrying...")
+
+    if examples:
+        xml = re.sub(r"\n    <example.*?>.*?</example>", "", xml)
+        example_section = "\n" + "\n".join(["    " + s for s in examples])
+        end_of_xml_ix = -(len("<rule/>") + 2)
+        xml_out = xml[:end_of_xml_ix] + example_section + xml[end_of_xml_ix:]
+        return xml_out, usages
+    return xml, usages
