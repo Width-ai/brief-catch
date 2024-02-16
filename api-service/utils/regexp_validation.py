@@ -1,9 +1,12 @@
 import re
+from utils.logger import setup_logger
 
+logger = setup_logger(__name__)
 
 def get_tags_with_postag(xml):
     matchtag_pattern = r"<match.*?postag.*?>"
     tokentag_pattern = r"<token.*?postag.*?>"
+    # TODO: exception tag?
     return re.findall(Rf"""({matchtag_pattern}|{tokentag_pattern})""", xml)
 
 
@@ -12,14 +15,14 @@ def get_postag_value(xml):
 
 
 def is_complex_regexp(s: str):
-    complex_tokens = [".*", ":", "|", "$"]
+    complex_tokens = [".*", ":", "|", "$", "[", "]", "+"]
     for token in complex_tokens:
         if token in s:
             return True
     return False
 
 
-def validate_postag_regexp(xml):
+def validate_postag_regexp(xml: str) -> str:
     # 1. get tags with postag from xml
     tags = get_tags_with_postag(xml)
 
@@ -50,14 +53,17 @@ def validate_postag_regexp(xml):
     return xml
 
 
-def validate_token_regexp(xml):
+def validate_token_regexp(xml: str) -> str:
     # grab all token tags
     token_tags = re.findall(r"<token.*?>.*?</token>", xml)
     if len(token_tags) == 0:
         return xml
     for tag in token_tags:
-        token_tag_value = re.findall(r"<token.*?>(.*?)</token>", xml)[0]
-        if is_complex_regexp(token_tag_value):
+        # token_tag_value = re.findall(r"<token.*?>(.*?)</token>", xml)[0]
+        if is_complex_regexp(tag):
+            # TODO: what if the regex is in the exception like this:
+            # '<token regexp="yes" inflected="yes">call<exception>a|all|his|me|the</exception></token>'
+            
             # ensure that regexp=yes is present in complex regexp
             if 'regexp="yes"' not in tag:
                 corrected_tag = (
