@@ -25,6 +25,7 @@ from domain.modifier_prompts.common_instructions import (
     OPTIMIZED_STANDARD_PROMPT,
 )
 from utils.logger import setup_logger
+from utils.rule_rewrite_prompt import get_dynamic_standard_prompt
 
 pricing = json.load(open("pricing.json"))
 utils_logger = setup_logger(__name__)
@@ -318,12 +319,21 @@ def rewrite_rule_helper(
     target_element: str,
     element_action: str,
     specific_actions: List[str] = [],
+    use_dynamic_prompt: bool = False,
 ) -> Tuple[str, Dict]:
     """
     Calls GPT with the corresponding system prompt and the user text formatted
     """
     # get correct system prompt
-    action_system_prompt = OPTIMIZED_STANDARD_PROMPT
+    if use_dynamic_prompt:
+        get_dynamic_standard_prompt(
+            original_rule,
+            target_element,
+            element_action,
+            specific_actions,
+        )
+    else:
+        action_system_prompt = OPTIMIZED_STANDARD_PROMPT
 
     # format user text
     user_text = RULE_USER_TEXT_TEMPLATE.replace(
