@@ -18,7 +18,6 @@ from utils.utils import (
     generate_simple_message,
     remove_thought_tags,
 )
-from regexp_validation import post_process_xml
 
 
 dynamic_logger = setup_logger(__name__)
