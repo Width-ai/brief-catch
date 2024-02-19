@@ -4,12 +4,14 @@ from domain.dynamic_prompting.parts_of_speech import POS_MAPS
 
 def get_pos_tag_dicts_from_rule(
     rule_xml: str,
-    all_pos: list[str],
+    all_pos: list[str] = None,
 ) -> dict[str, str]:
     """
     takes in a rule xml and a list of available pos_map dicts
     returns a list of pos_tag_dict
     """
+    if not all_pos:
+        all_pos = list(POS_MAPS.keys())
     # find tokens that have a postag
     # rule_xml = TEMPLATE_RULES[1]
     matches = re.findall(r'<token postag=".*?>', rule_xml)
@@ -52,22 +54,20 @@ def replace_all_instances_of_tag(tag_label, src_rule_xml, target_rule_xml):
     """
     # A list to hold all replacement tags from the target_rule_xml
     replacement_tags = re.findall(
-        r'<{0}.*?</{0}>'.format(re.escape(tag_label)),
-        target_rule_xml, 
-        flags=re.DOTALL
+        r"<{0}.*?</{0}>".format(re.escape(tag_label)), target_rule_xml, flags=re.DOTALL
     )
 
     # Create an iterator from the replacement tags
     replacements = iter(replacement_tags)
-    
+
     def get_next_tag_instance(match):
         # Get the next tag from the iterator, or use the original if none left
         return next(replacements, match.group(0))
-    
+
     # Use re.sub with a function that replaces the matched content
     return re.sub(
-        r'<{0}.*?</{0}>'.format(re.escape(tag_label)),
+        r"<{0}.*?</{0}>".format(re.escape(tag_label)),
         get_next_tag_instance,
         src_rule_xml,
-        flags=re.DOTALL
+        flags=re.DOTALL,
     )

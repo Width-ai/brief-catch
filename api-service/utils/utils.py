@@ -16,7 +16,7 @@ from word_embeddings_sdk import WordEmbeddingsSession
 from domain.prompts import (
     SENTENCE_RANKING_SYSTEM_PROMPT,
     PARENTHESES_REWRITING_PROMPT,
-    CREATE_RULE_FROM_ADHOC_SYSTEM_PROMPT,
+    NEW_CREATE_RULE_FROM_ADHOC_SYSTEM_PROMPT,
 )
 from domain.models import RuleToUpdate
 from domain.modifier_prompts import RULE_USER_TEXT_TEMPLATE
@@ -25,6 +25,8 @@ from domain.modifier_prompts.common_instructions import (
     OPTIMIZED_STANDARD_PROMPT,
 )
 from utils.logger import setup_logger
+from utils.regexp_validation import post_process_xml
+from utils.rule_rewrite_prompt import get_dynamic_standard_prompt
 
 pricing = json.load(open("pricing.json"))
 utils_logger = setup_logger(__name__)
@@ -318,12 +320,21 @@ def rewrite_rule_helper(
     target_element: str,
     element_action: str,
     specific_actions: List[str] = [],
+    use_dynamic_prompt: bool = True,
 ) -> Tuple[str, Dict]:
     """
     Calls GPT with the corresponding system prompt and the user text formatted
     """
     # get correct system prompt
-    action_system_prompt = OPTIMIZED_STANDARD_PROMPT
+    if use_dynamic_prompt:
+        action_system_prompt = get_dynamic_standard_prompt(
+            original_rule,
+            target_element,
+            element_action,
+            specific_actions,
+        )
+    else:
+        action_system_prompt = OPTIMIZED_STANDARD_PROMPT
 
     # format user text
     user_text = RULE_USER_TEXT_TEMPLATE.replace(
@@ -462,6 +473,24 @@ def remove_thought_tags(input_text: str) -> str:
     return cleaned_text
 
 
+def message_html_to_markdown(xml_rule: str) -> str:
+    """
+    Function to make sure the <message> tag does not contain any HTML.
+    """
+    # bold tags
+    xml_rule = xml_rule.replace("<b>", "**")
+    xml_rule = xml_rule.replace("</b>", "**")
+    # italics tag
+    xml_rule = xml_rule.replace("<i>", "*")
+    xml_rule = xml_rule.replace("</i>", "*")
+    # linebreak tag
+    xml_rule = xml_rule.replace("<linebreak/><linebreak/><linebreak/>", "|")
+    xml_rule = xml_rule.replace("<linebreak/><linebreak/>", "|")
+    xml_rule = xml_rule.replace("<linebreak/>", "|")
+
+    return xml_rule    
+
+
 def create_rule_helper(
     ad_hoc_syntax: str,
     rule_number: str,
@@ -491,13 +520,19 @@ Corrected Test Sentence:
 
 XML Rule:"""
     messages = generate_simple_message(
-        system_prompt=CREATE_RULE_FROM_ADHOC_SYSTEM_PROMPT, user_prompt=user_text
+        system_prompt=NEW_CREATE_RULE_FROM_ADHOC_SYSTEM_PROMPT, user_prompt=user_text
     )
 
     response, usage = call_gpt_with_backoff(
         messages=messages, model="gpt-4-1106-preview", temperature=0, max_length=1480
     )
+    
+    # post processing
     cleaned_response = remove_thought_tags(response)
+    cleaned_response = cleaned_response.replace("```xml", "").replace("```", "")
+    cleaned_response = post_process_xml(cleaned_response)
+    cleaned_response = message_html_to_markdown(cleaned_response)
+    # TODO: call example validation function
     return cleaned_response.strip(), usage
 
 
