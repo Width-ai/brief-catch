@@ -19,35 +19,38 @@ Inflection exceptions: An inflected token with one or more words will be indicat
 <token inflected="yes">walk|run<exception>ran</exception></token>  
 """
 
+
 SUGGESTION_AND_EXAMPLE_INSTRUCTIONS = """
-Suggestion tags indicate how the text will be modified. Example tags show how the suggestion is applied to the text. Suggestion tags associated with a pattern have a `correction` attribute. The correction attribute says what the pattern will be corrected to. 
+# suggestion and example tags
+    
+    Suggestion tags indicate how the text will be modified. Example tags show how the suggestion is applied to the text. Suggestion tags associated with a pattern have a `correction` attribute. The correction attribute says what the pattern will be corrected to. 
 
-For example, inspect the following suggestion and example tags. Notice how the text inside the example tags "good faith" matches the <pattern> tags and gets corrected to the <suggestion> tag in the example tag correction attribute:
-```
-<pattern>
-    <token>good</token>
-    <token>faith</token>
-</pattern>
-<suggestion>good-faith</suggestion>
-<example correction="good-faith">good faith</example>
-```
+    For example, inspect the following suggestion and example tags. Notice how the text inside the example tags "good faith" matches the <pattern> tags and gets corrected to the <suggestion> tag in the example tag correction attribute:
+    ```
+    <pattern>
+        <token>good</token>
+        <token>faith</token>
+    </pattern>
+    <suggestion>good-faith</suggestion>
+    <example correction="good-faith">good faith</example>
+    ```
 
-In the <suggestion> tags, sometimes you will see a `match` tags. These match tags have a numeric `no` attribute. The `no` attribute indicates what token (in the pattern) must be inserted in that location in the corresponding example. For example, notice how <match no="2"> causes the example tag to slot in the second word "used" in the corrected example. 
-```
-<pattern>
-    <token>presently</token>
-    <token>used</token>
-</pattern>
-<suggestion>now <match no="2"/></suggestion>
-<example correction="now used">The property is <marker>presently used</marker> for a different purpose.</example>
-```
+    In the <suggestion> tags, sometimes you will see a `match` tags. These match tags have a numeric `no` attribute. The `no` attribute indicates what token (in the pattern) must be inserted in that location in the corresponding example. For example, notice how <match no="2"> causes the example tag to slot in the second word "used" in the corrected example. 
+    ```
+    <pattern>
+        <token>presently</token>
+        <token>used</token>
+    </pattern>
+    <suggestion>now <match no="2"/></suggestion>
+    <example correction="now used">The property is <marker>presently used</marker> for a different purpose.</example>
+    ```
 
-Finally, when there is more than one suggestion tag, the correction in the example needs to take that into account by having a logical or operator "|". For example, notice how the two suggestion tags below translate to a correction attribute in the example tag with a:
-```
-<suggestion><match no="1"/> on</suggestion>
-<suggestion><match no="1" postag="(V.*)" postag_regexp="yes" postag_replace="$1">ask</match></suggestion>
-<example correction="called on|asked">She was <marker>called upon</marker> three times.</example>
-```
+    Finally, when there is more than one suggestion tag, the correction in the example needs to take that into account by having a logical or operator "|". For example, notice how the two suggestion tags below translate to a correction attribute in the example tag with a:
+    ```
+    <suggestion><match no="1"/> on</suggestion>
+    <suggestion><match no="1" postag="(V.*)" postag_regexp="yes" postag_replace="$1">ask</match></suggestion>
+    <example correction="called on|asked">She was <marker>called upon</marker> three times.</example>
+    ```
 """
 
 SENT_START_INSTRUCTIONS = """
@@ -74,6 +77,7 @@ def format_optimized_standard_prompt(
     replace_ct_tag,
     replace_backslash_number,
     replace_sent_start,
+    replace_suggestion_and_example,
 ):
     return (
         f"""You will be given a rule, an element type to modify, and an action to take with specificities around the action in the user text. Modify the xml rule according to the info provided in sections 1 and 2.
@@ -155,6 +159,9 @@ def format_optimized_standard_prompt(
 
     (8) Any time an antipattern is added or a pattern is modified, an example needs to be added to match the exact string of tokens of the new antipattern(s) or pattern. Please generate an exemplary phrase which matches the newly added antipattern or modified pattern and insert it into the rule as the last example:  
     In case the rule already contains antipatterns and examples for those antipatterns, add a new example for the newly added antipattern and insert it below after all other existing examples above the closing </rule> tag.
+
+    {replace_suggestion_and_example}
+
     """
         + """
 
@@ -314,22 +321,21 @@ def get_dynamic_standard_prompt(
         ANTIPATTERN_INSTRUCTIONS if target_element == "antipattern" else ""
     )
     _replace_ct_tag = CT_TAG_INSTRUCTIONS if has_ct(specific_actions) else ""
-    _replace_backslash_number = (
-        SUGGESTION_AND_EXAMPLE_INSTRUCTIONS
-        if has_backslash_number(specific_actions + original_rule)
-        else ""
-    )
+
+    _replace_backslash_number = SUGGESTION_AND_EXAMPLE_INSTRUCTIONS
+
+    SUGGESTION_AND_EXAMPLE_INSTRUCTIONS
     _replace_sent_start = (
         SENT_START_INSTRUCTIONS
         if has_sent_start(specific_actions + original_rule)
         else ""
     )
     return format_optimized_standard_prompt(
-        _replace_antipattern,
-        target_element,
-        _replace_pos_tags,
-        _replace_pos_tags_fewshot_examples,
-        _replace_ct_tag,
-        _replace_backslash_number,
-        _replace_sent_start,
+        replace_antipattern=_replace_antipattern,
+        target_element=target_element,
+        replace_pos_tags=_replace_pos_tags,
+        replace_pos_tags_fewshot_examples=_replace_pos_tags_fewshot_examples,
+        replace_ct_tag=_replace_ct_tag,
+        replace_sent_start=_replace_sent_start,
+        replace_suggestion_and_example=_replace_backslash_number,
     )
