@@ -326,7 +326,7 @@ def rewrite_rule_helper(
     """
     # get correct system prompt
     if use_dynamic_prompt:
-        get_dynamic_standard_prompt(
+        action_system_prompt = get_dynamic_standard_prompt(
             original_rule,
             target_element,
             element_action,
