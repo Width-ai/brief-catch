@@ -22,7 +22,7 @@ Inflection exceptions: An inflected token with one or more words will be indicat
 SUGGESTION_AND_EXAMPLE_INSTRUCTIONS = """
 Suggestion tags indicate how the text will be modified. Example tags show how the suggestion is applied to the text. Suggestion tags associated with a pattern have a `correction` attribute. The correction attribute says what the pattern will be corrected to. 
 
-For example, inspect the following suggestion and example tags
+For example, inspect the following suggestion and example tags. Notice how the text inside the example tags "good faith" matches the <pattern> tags and gets corrected to the <suggestion> tag in the example tag correction attribute:
 ```
 <pattern>
     <token>good</token>
