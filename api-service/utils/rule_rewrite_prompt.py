@@ -19,7 +19,36 @@ Inflection exceptions: An inflected token with one or more words will be indicat
 <token inflected="yes">walk|run<exception>ran</exception></token>  
 """
 
-BACKSLASH_NUMBER_INSTRUCTIONS = """(9) In the <suggestion> tags, if the original rule contained a `\<number>`, make sure they persist in the updated rule. This is crucial to maintain."""
+SUGGESTION_AND_EXAMPLE_INSTRUCTIONS = """
+Suggestion tags indicate how the text will be modified. Example tags show how the suggestion is applied to the text. Suggestion tags associated with a pattern have a `correction` attribute. The correction attribute says what the pattern will be corrected to. 
+
+For example, inspect the following suggestion and example tags
+```
+<pattern>
+    <token>good</token>
+    <token>faith</token>
+</pattern>
+<suggestion>good-faith</suggestion>
+<example correction="good-faith">good faith</example>
+```
+
+In the <suggestion> tags, sometimes you will see a `match` tags. These match tags have a numeric `no` attribute. The `no` attribute indicates what token (in the pattern) must be inserted in that location in the corresponding example. For example, notice how <match no="2"> causes the example tag to slot in the second word "used" in the corrected example. 
+```
+<pattern>
+    <token>presently</token>
+    <token>used</token>
+</pattern>
+<suggestion>now <match no="2"/></suggestion>
+<example correction="now used">The property is <marker>presently used</marker> for a different purpose.</example>
+```
+
+Finally, when there is more than one suggestion tag, the correction in the example needs to take that into account by having a logical or operator "|". For example, notice how the two suggestion tags below translate to a correction attribute in the example tag with a:
+```
+<suggestion><match no="1"/> on</suggestion>
+<suggestion><match no="1" postag="(V.*)" postag_regexp="yes" postag_replace="$1">ask</match></suggestion>
+<example correction="called on|asked">She was <marker>called upon</marker> three times.</example>
+```
+"""
 
 SENT_START_INSTRUCTIONS = """
 (7) Sent_Start Coding: Sent_Start is a POSTAG that counts as its own token at the start of the sentence. This means if Input 1 requests "SENT_START Hello" Then token 1 is <token postag="SENT_START"/>, token 2 is <token>hello</token>. When Sent_Start is used, the rest of the pattern must be offset from this token using <marker> </marker>.
@@ -286,7 +315,7 @@ def get_dynamic_standard_prompt(
     )
     _replace_ct_tag = CT_TAG_INSTRUCTIONS if has_ct(specific_actions) else ""
     _replace_backslash_number = (
-        BACKSLASH_NUMBER_INSTRUCTIONS
+        SUGGESTION_AND_EXAMPLE_INSTRUCTIONS
         if has_backslash_number(specific_actions + original_rule)
         else ""
     )
