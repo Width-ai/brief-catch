@@ -319,7 +319,7 @@ def rewrite_rule_helper(
     target_element: str,
     element_action: str,
     specific_actions: List[str] = [],
-    use_dynamic_prompt: bool = False,
+    use_dynamic_prompt: bool = True,
 ) -> Tuple[str, Dict]:
     """
     Calls GPT with the corresponding system prompt and the user text formatted
