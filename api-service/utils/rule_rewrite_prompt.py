@@ -68,7 +68,6 @@ SENT_START_INSTRUCTIONS = """
 """
 
 
-# NOTE: opted to make this a function instead of a formattable (i) to be explicit about what variables are required to format the string (ii) to safer about ensuring that everything that needs to get replaced does infact get replaced.
 def format_optimized_standard_prompt(
     replace_antipattern,
     target_element,
