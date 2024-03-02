@@ -10,9 +10,8 @@ from . import (
     antipatterns,
     add_required_tokens,
     exclude_from_final_token,
-    exclude_from_second_token
+    exclude_from_second_token,
 )
-
 
 
 RULE_USER_TEXT_TEMPLATE = """# Original Rule:

@@ -1,5 +1,6 @@
 import re
 from typing import List
+from domain.constants import PARTS_OF_SPEECH
 from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -15,10 +16,12 @@ def get_postag_value(xml: str) -> List[str]:
     return re.findall(r'postag="(.*?)"', xml)
 
 
-def is_complex_regexp(s: str):
-    complex_tokens = [".*", ":", "|", "$", "[", "]", "+"]
+def is_complex_regexp(s: str) -> bool:
+    complex_tokens = [":", "|", "$", "[", "]", "+"]
+    if ".*" in s:
+        return True
     for token in complex_tokens:
-        if token in s:
+        if token in s and s not in PARTS_OF_SPEECH:
             return True
     return False
 
