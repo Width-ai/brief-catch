@@ -3,16 +3,66 @@ from typing import Dict, List
 from utils.dynamic_prompting import get_pos_tag_dicts_from_rule
 from domain.dynamic_prompting.parts_of_speech import POS_MAPS
 
+RX_PROMPT = """
+## Open Token: `RX(.*?)`
+
+- Open tokens are indicated by 'RX(.*?)' 
+- Open tokens are coded as <token/>. 
+- If you are told to generate a token for a pattern like `( RX(.*? ) !apples !bananas !grapes )`, that would translate to: <token><exception regexp="yes">apples|banans|grapes</exception></token>
+
+Below are a few examples: 
+Input: "There (is was) a fight."  
+Output:
+```
+<antipattern>  
+    <token>there</token>  
+    <token regexp="yes">is|was</token>  
+    <token>a</token>  
+    <token>fight</token>  
+    <token>.</token>  
+</antipattern>
+```
+"""
+CT_PROMPT = """
+## Infelction: `CT()`
+
+`CT` indicates a token should be inflected. To inflect a token, include the attribute `inflected="yes"` in the token tag. For example, the instructions `CT(call) upon ( a all his me the )` corresponds to the following tokens:
+```
+<token inflected="yes">call</token>
+<token>upon</token>
+<token regexp="yes">a|all|his|me|the</token>
+```
+
+If asked to include multiple inflected words in a single token, you can use pipe character `|` as a logical OR operator. For example, the instructions `( CT(initiate) CT(make) ) ( contact contacts ) with ( other others people )` contains multiple inflected words (each indicated by CT) in the same token (outer parenthesis marker) and would therefore correspond to the following tokens: 
+```
+<token inflected="yes">initiate|make</token>  
+<token>contact|contacts</token>  
+<token>with</token>  
+<token>other|others|people</token>  
+```
+
+Inflected tokens can contain a combination of regexp and exception. For example, the instructions `CT(walk run !ran)` corresponds to the following token: 
+```
+<token inflected="yes">walk|run<exception>ran</exception></token>  
+```
+"""
+CASESENS_PROMPT = """
+## case sensitive
+
+Case Sensitive: Another token property is case_sensitive="yes". By default case_sensitive="no", if the token needs to be case_sensitive="yes," this will be requested by putting a "/" character before the word whose token should have the case_sensitive="yes" attribute. For example: 
+Input:
+"/They"
+Output:
+```
+<token case_sensitive="yes">They</token>  
+```
+"""
+
 
 def format_optimized_standard_prompt(
-    replace_antipattern,
-    target_element,
-    replace_pos_tags,
-    replace_pos_tags_fewshot_examples,
-    replace_ct_tag,
-    replace_backslash_number,
-    replace_sent_start,
-    replace_suggestion_and_example,
+    replace_rx,
+    replace_ct,
+    replace_casesens,
 ):
     return f"""
     You are a component in a system designed to modify xml content. The user will provide to you an xml content, an element of that xml that should be modified, and a specific modification request. Your job will be to modify the xml content according to the information provided.
@@ -434,56 +484,11 @@ def format_optimized_standard_prompt(
     - a forward slash `/` indicates that the word should be case sensitive. By default case_sensitive="no", if the token needs to be case_sensitive="yes," this will be requested by putting a "/" character before the word whose token should have the case_sensitive="yes" attribute
 
     
-    ## Open Token: `RX(.*?)`
+    {replace_rx}
 
-    - Open tokens are indicated by 'RX(.*?)' 
-    - Open tokens are coded as <token/>. 
-    - If you are told to generate a token for a pattern like `( RX(.*? ) !apples !bananas !grapes )`, that would translate to: <token><exception regexp="yes">apples|banans|grapes</exception></token>
+    {replace_ct}
 
-    Below are a few examples: 
-    Input: "There (is was) a fight."  
-    Output:
-    ```
-    <antipattern>  
-        <token>there</token>  
-        <token regexp="yes">is|was</token>  
-        <token>a</token>  
-        <token>fight</token>  
-        <token>.</token>  
-    </antipattern>
-    ```
-
-    ## Infelction: `CT()`
-    
-    `CT` indicates a token should be inflected. To inflect a token, include the attribute `inflected="yes"` in the token tag. For example, the instructions `CT(call) upon ( a all his me the )` corresponds to the following tokens:
-    ```
-    <token inflected="yes">call</token>
-    <token>upon</token>
-    <token regexp="yes">a|all|his|me|the</token>
-    ```
-    
-    If asked to include multiple inflected words in a single token, you can use pipe character `|` as a logical OR operator. For example, the instructions `( CT(initiate) CT(make) ) ( contact contacts ) with ( other others people )` contains multiple inflected words (each indicated by CT) in the same token (outer parenthesis marker) and would therefore correspond to the following tokens: 
-    ```
-    <token inflected="yes">initiate|make</token>  
-    <token>contact|contacts</token>  
-    <token>with</token>  
-    <token>other|others|people</token>  
-    ```
-    
-    Inflected tokens can contain a combination of regexp and exception. For example, the instructions `CT(walk run !ran)` corresponds to the following token: 
-    ```
-    <token inflected="yes">walk|run<exception>ran</exception></token>  
-    ```
-
-    ## case sensitive
-
-    Case Sensitive: Another token property is case_sensitive="yes". By default case_sensitive="no", if the token needs to be case_sensitive="yes," this will be requested by putting a "/" character before the word whose token should have the case_sensitive="yes" attribute. For example: 
-    Input:
-    "/They"
-    Output:
-    ```
-    <token case_sensitive="yes">They</token>  
-    ```
+    {replace_casesens}
 
     ## Examples 
 
@@ -737,6 +742,10 @@ def has_rx(s):
     return "RX(.*?)" in s
 
 
+def has_casesens(s):
+    return "/" in s
+
+
 def has_backslash_number(s):
     return "\<number>" in s
 
@@ -770,7 +779,6 @@ def get_dynamic_standard_prompt(
     _replace_antipattern = (
         ANTIPATTERN_INSTRUCTIONS if target_element == "antipattern" else ""
     )
-    _replace_ct_tag = CT_TAG_INSTRUCTIONS if has_ct(specific_actions) else ""
 
     _replace_backslash_number = SUGGESTION_AND_EXAMPLE_INSTRUCTIONS
 
@@ -780,13 +788,7 @@ def get_dynamic_standard_prompt(
         if has_sent_start(specific_actions + original_rule)
         else ""
     )
-    return format_optimized_standard_prompt(
-        replace_antipattern=_replace_antipattern,
-        target_element=target_element,
-        replace_pos_tags=_replace_pos_tags,
-        replace_pos_tags_fewshot_examples=_replace_pos_tags_fewshot_examples,
-        replace_ct_tag=_replace_ct_tag,
-        replace_sent_start=_replace_sent_start,
-        replace_suggestion_and_example=_replace_backslash_number,
-        replace_backslash_number=_replace_backslash_number,
-    )
+    replace_rx = RX_PROMPT if has_rx(specific_actions) else ""
+    replace_ct = CT_PROMPT if has_ct(specific_actions) else ""
+    replace_casesens = CASESENS_PROMPT if has_casesens(specific_actions) else ""
+    return format_optimized_standard_prompt(replace_rx, replace_ct, replace_casesens)
