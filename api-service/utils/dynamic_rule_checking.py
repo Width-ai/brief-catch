@@ -532,4 +532,6 @@ def check_rule_modification(rule_xml):
     response = response.replace("```", "")
     response = response.replace("N.*?", "N.*")
     rule_xml = re.findall(r"<rule.*?</rule>", response, re.DOTALL)[0]
-    return response, rule_xml
+    # return response, rule_xml
+
+    return rule_xml, [usage]
