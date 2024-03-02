@@ -1,3 +1,4 @@
+import re
 from typing import Dict, List, Tuple
 from domain.dynamic_prompting.parts_of_speech import POS_MAPS
 from domain.dynamic_prompting.prompt_leggo import (
@@ -372,11 +373,20 @@ Sometimes you will see a `match` tag inside a suggestion. These match tags have 
 
 # PART II: YOUR TASK
 
-the user will provide you with a rule xml enclosed in tripple back quotes. Your task is to evaluate whether this rule xml follows the principles established above. 
+The user will provide you with a rule xml. Your task is to evaluate whether this rule xml follows the principles established above. 
 
-If the rule xml meets all the criteria established above, you should respond back with the same string provided to you. 
+Your response should contain two parts. In the first part include your thoughts and comments around <thoughts>...</thoughts> tags. Answer the following questions:
+- How many patterns does this rule have?
+- How many example tags corresponding to patterns does this rule have? This number should match the number of patterns.
+- How many antipatterns does this rule have?
+- How many example tags corresponding to antipatterns does this rule have? This number should match the number of antipatterns
+- Do the <marker>...</marker> tags in the example tags span the section of text represented by the pattern?
+- How many suggestion tags does this rule have?
+- Are all suggestion tags represented in the correction field of the example tags?
 
-If the rule xml violates the criteria established above, you should respond back with the corrected version of the rule xml.
+If the rule xml meets all the criteria established in 'PART I XML Rules', you should respond back with the same string provided to you. 
+
+If the rule xml violates the criteria established in 'PART I XML Rules', you should respond back with the corrected version of the rule xml.
 
 You are part of a larger software system. Your output will directly effect the user view. Therefore you must not include additional comments. Your output SHOULD ALWAYS begin with "<rule" substring and end with "</rule>" substring.
 
@@ -404,6 +414,7 @@ User:
     <example correction="good-faith purchaser">They’re <marker>good faith purchaser</marker>.</example>
 
 Assistant:
+<thought>[`insert your reasoning about the correctness of this rule here`]</thought>
 <rule id="BRIEFCATCH_326463179224822017023863994110462000611" name="BRIEFCATCH_PUNCTUATION_198">
     <pattern>
         <token>good</token>
@@ -428,6 +439,7 @@ User:
 </rule>
 
 Assistant:
+<thought>[`insert your reasoning about the correctness of this rule here`]</thought>
 <rule id="BRIEFCATCH_322580514589798171215317472742154216778" name="BRIEFCATCH_USAGE_45">
     <pattern>
         <token>preventative</token>
@@ -453,6 +465,7 @@ User:
 </rule>
 
 Assistant:
+<thought>[`insert your reasoning about the correctness of this rule here`]</thought>
 <rule id="BRIEFCATCH_86869803831870490687851873429223778199" name="BRIEFCATCH_PUNCTUATION_197">
     <pattern>
         <token>plain</token>
@@ -484,6 +497,7 @@ User:
 </rule>
 
 Assistant:
+<thought>[`insert your reasoning about the correctness of this rule here`]</thought>
 <rule id="BRIEFCATCH_72217380358443072298334619098248039878" name="BRIEFCATCH_PUNCHINESS_921">
     <antipattern>
         <token inflected="yes">call</token>
@@ -516,7 +530,10 @@ def check_rule_modification(rule_xml):
     )
     response = response.replace("```xml", "")
     response = response.replace("```", "")
-    return response, [usage]
+    response = response.replace("N.*?", "N.*")
+    rule_xml = re.findall(r"<rule.*?</rule>", response, re.DOTALL)[0]
+    return response, rule_xml
+    # return rule_xml, [usage]
 
 
 def old_check_rule_modification(input_rule_xml: str) -> Tuple[str, List[Dict]]:
