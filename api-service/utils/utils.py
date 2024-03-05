@@ -539,15 +539,6 @@ XML Rule:"""
     cleaned_response = post_process_xml(cleaned_response)
     cleaned_response = message_html_to_markdown(cleaned_response)
     # rule validation
-    validaton_prompt = format_optimized_standard_prompt()
-    messages = generate_simple_message(
-        system_prompt=validaton_prompt,
-        user_prompt=cleaned_response,
-    )
-    cleaned_response, usage = call_gpt_with_backoff(
-        messages=messages, model="gpt-4-1106-preview", temperature=0, max_length=1480
-    )
-    usages.append(usage)
     cleaned_response, _usages = check_rule_modification(cleaned_response)
     usages.extend(_usages)
     return cleaned_response.strip(), combine_all_usages(usages)
