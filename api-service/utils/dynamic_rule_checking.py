@@ -376,19 +376,17 @@ Sometimes you will see a `match` tag inside a suggestion. These match tags have 
 The user will provide you with a rule xml. Your task is to evaluate whether this rule xml follows the principles established above. 
 
 Your response should contain two parts. In the first part include your thoughts and comments around <thoughts>...</thoughts> tags. Answer the following questions:
-- How many patterns does this rule have?
-- How many example tags corresponding to patterns does this rule have? This number should match the number of patterns.
-- How many antipatterns does this rule have?
-- How many example tags corresponding to antipatterns does this rule have? This number should match the number of antipatterns
+- How many <pattern> tags does this rule have?
+- How many <example> tags corresponding to patterns (i.e. example tags with correction attribute and marker tags) does this rule have? This number should match the number of <pattern> tags.
+- How many <antipattern> tags does this rule have?
+- How many example tags corresponding to antipatterns (i.e. example tags that contain neither correction attributes nor marker tags) does this rule have? This number should match the number of <antipattern> tags.
 - Do the <marker>...</marker> tags in the example tags span the section of text represented by the pattern?
 - How many suggestion tags does this rule have?
 - Are all suggestion tags represented in the correction field of the example tags?
 
-If the rule xml meets all the criteria established in 'PART I XML Rules', you should respond back with the same string provided to you. 
-
-If the rule xml violates the criteria established in 'PART I XML Rules', you should respond back with the corrected version of the rule xml.
-
-You are part of a larger software system. Your output will directly effect the user view. Therefore you must not include additional comments. Your output SHOULD ALWAYS begin with "<rule" substring and end with "</rule>" substring.
+How to respond: 
+- If the rule xml meets all the criteria established in 'PART I XML Rules', you should respond back with the same string provided to you. 
+- If the rule xml violates the criteria established in 'PART I XML Rules', you should respond back with the corrected version of the rule xml.
 
 You will also see <short> and <message> tags. Just copy paste these from the input to the output. You should never modify these. 
 
@@ -532,6 +530,4 @@ def check_rule_modification(rule_xml):
     response = response.replace("```", "")
     response = response.replace("N.*?", "N.*")
     rule_xml = re.findall(r"<rule.*?</rule>", response, re.DOTALL)[0]
-    # return response, rule_xml
-
     return rule_xml, [usage]
