@@ -1,3 +1,4 @@
+import re
 from typing import Dict, List, Tuple
 from domain.dynamic_prompting.parts_of_speech import POS_MAPS
 from domain.dynamic_prompting.prompt_leggo import (
@@ -372,11 +373,20 @@ Sometimes you will see a `match` tag inside a suggestion. These match tags have 
 
 # PART II: YOUR TASK
 
-the user will provide you with a rule xml enclosed in tripple back quotes. Your task is to evaluate whether this rule xml follows the principles established above. 
+The user will provide you with a rule xml. Your task is to evaluate whether this rule xml follows the principles established above. 
 
-If the rule xml meets all the criteria established above, you should respond back with the same string provided to you. 
+Your response should contain two parts. In the first part include your thoughts and comments around <thoughts>...</thoughts> tags. Answer the following questions:
+- How many patterns does this rule have?
+- How many example tags corresponding to patterns does this rule have? This number should match the number of patterns.
+- How many antipatterns does this rule have?
+- How many example tags corresponding to antipatterns does this rule have? This number should match the number of antipatterns
+- Do the <marker>...</marker> tags in the example tags span the section of text represented by the pattern?
+- How many suggestion tags does this rule have?
+- Are all suggestion tags represented in the correction field of the example tags?
 
-If the rule xml violates the criteria established above, you should respond back with the corrected version of the rule xml.
+If the rule xml meets all the criteria established in 'PART I XML Rules', you should respond back with the same string provided to you. 
+
+If the rule xml violates the criteria established in 'PART I XML Rules', you should respond back with the corrected version of the rule xml.
 
 You are part of a larger software system. Your output will directly effect the user view. Therefore you must not include additional comments. Your output SHOULD ALWAYS begin with "<rule" substring and end with "</rule>" substring.
 
@@ -404,6 +414,7 @@ User:
     <example correction="good-faith purchaser">They’re <marker>good faith purchaser</marker>.</example>
 
 Assistant:
+<thought>[`insert your reasoning about the correctness of this rule here`]</thought>
 <rule id="BRIEFCATCH_326463179224822017023863994110462000611" name="BRIEFCATCH_PUNCTUATION_198">
     <pattern>
         <token>good</token>
@@ -428,6 +439,7 @@ User:
 </rule>
 
 Assistant:
+<thought>[`insert your reasoning about the correctness of this rule here`]</thought>
 <rule id="BRIEFCATCH_322580514589798171215317472742154216778" name="BRIEFCATCH_USAGE_45">
     <pattern>
         <token>preventative</token>
@@ -453,6 +465,7 @@ User:
 </rule>
 
 Assistant:
+<thought>[`insert your reasoning about the correctness of this rule here`]</thought>
 <rule id="BRIEFCATCH_86869803831870490687851873429223778199" name="BRIEFCATCH_PUNCTUATION_197">
     <pattern>
         <token>plain</token>
@@ -484,6 +497,7 @@ User:
 </rule>
 
 Assistant:
+<thought>[`insert your reasoning about the correctness of this rule here`]</thought>
 <rule id="BRIEFCATCH_72217380358443072298334619098248039878" name="BRIEFCATCH_PUNCHINESS_921">
     <antipattern>
         <token inflected="yes">call</token>
@@ -516,140 +530,8 @@ def check_rule_modification(rule_xml):
     )
     response = response.replace("```xml", "")
     response = response.replace("```", "")
-    return response, [usage]
+    response = response.replace("N.*?", "N.*")
+    rule_xml = re.findall(r"<rule.*?</rule>", response, re.DOTALL)[0]
+    # return response, rule_xml
 
-
-def old_check_rule_modification(input_rule_xml: str) -> Tuple[str, List[Dict]]:
-    """
-    1. 3 example known valid rules that are most similar to rule
-    2. POS tags that are present in input rule
-    3. if regex appears in input rule, include regex rules
-    4. additional cleaning
-    5. call model and check response. maybe call again for correction
-    """
-    dynamic_logger.info(f"skip check rule modification")
-    usages = []
-    # 1. find xml rules that are similar to input rule
-    matching_examples = get_similar_template_rules(input_rule_xml)
-
-    # 2. grab pos tags present in input xml rule
-    pos_tags_from_input = get_pos_tag_dicts_from_rule(
-        input_rule_xml,
-        list(POS_MAPS.keys()),
-    )
-
-    # grab pos tags present in matching examples
-    pos_tag_from_examples = [
-        get_pos_tag_dicts_from_rule(r, POS_MAPS) for r in matching_examples
-    ]
-    pos_tag_from_examples = {k: v for d in pos_tag_from_examples for k, v in d.items()}
-
-    # assemble POS list used in prompt from input and matching examples
-    pos_tags = {**pos_tags_from_input, **pos_tag_from_examples}
-
-    # TODO: include header in what is replaced to avoid empty header (similar to regex below)
-
-    # 3. maybe regex
-    if rule_has_regex(input_rule_xml):
-        _replace_regex = REGEX_INSTRUCTIONS_PROMPT
-    else:
-        _replace_regex = ""
-
-    # 4. clean up xml
-    input_rule_xml = remove_message_and_short_tags(input_rule_xml)
-    matching_examples = [remove_message_and_short_tags(r) for r in matching_examples]
-
-    # 5. assemble prompt
-    _replace_pos = "\n".join([f"{v}" for k, v in pos_tags.items()])
-    _replace_matching_examples = "\n".join(matching_examples)
-    system_prompt = VALIDATE_RULE_PROMPT.format(
-        example_rules=_replace_matching_examples,
-        part_of_speech=_replace_pos,
-        regex_rules=_replace_regex,
-    )
-    user_prompt = (
-        "Input rule:\n"
-        + input_rule_xml
-        + "\n\n"
-        + "Are the <pattern> and Suggestion & Example of the XML rule a match? They are only a match if they are written EXACTLY how they should be. Yes or No. "
-    )
-
-    # include 'suggestion & example' in prompt
-    user_prompt = user_prompt.replace(
-        "</pattern>", "</pattern>\n        Suggestion & Example:"
-    )
-
-    # call model
-    message = generate_simple_message(
-        system_prompt=system_prompt,
-        user_prompt=user_prompt,
-    )
-
-    response, usage = call_gpt_with_backoff(
-        model="gpt-4-1106-preview", messages=message, temperature=0
-    )
-    usages.append(usage)
-
-    # check response and ask for correction if necessary
-    if "yes" in response[:3].lower():
-        validated_rule_xml = input_rule_xml
-    elif "no" in response[:3].lower():
-        # rewrite suggestion and example tags
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-            {"role": "assistant", "content": "No."},
-            {
-                "role": "user",
-                "content": "Rewrite the <suggestion> and <example> tags to be correct. Think about what the example tag should be before writing it, paying special attention when placing <marker> tags. If the rule has an <antipattern>, make sure that there is one (and only one) <example> per <antipattern>. The <marker> tags **must** surround text that matches the pattern of the rule. Surround your thoughts with <thought>...</thoughts> tags then write the corrected tags with no other text:",
-            },
-        ]
-
-        response_tags_rewrite, usage = call_gpt_with_backoff(
-            messages=messages, temperature=0, model="gpt-4-1106-preview", max_length=600
-        )
-        dynamic_logger.info(f"{response_tags_rewrite=}")
-        response_tags_rewrite = remove_thought_tags(response_tags_rewrite)
-        dynamic_logger.info(f"cleaned {response_tags_rewrite=}")
-        usages.append(usage)
-
-        # rewrite entire rule
-        messages.extend(
-            [
-                {
-                    "role": "assistant",
-                    "content": response_tags_rewrite,
-                },
-                {
-                    "role": "user",
-                    "content": "Rewrite the entire rule to include these modifications:",
-                },
-            ]
-        )
-
-        response_model_rule_rewrite, usage = call_gpt_with_backoff(
-            messages=messages,
-            temperature=0,
-            model="gpt-4-1106-preview",
-            max_length=1500,
-        )
-        dynamic_logger.info(f"{response_model_rule_rewrite=}")
-        usages.append(usage)
-
-        # replace all instances of <suggestion> tags in `input_rule_xml` with the corresponding <suggestion> tags in `response_model_rule_rewrite`
-        new_rule_xml = replace_all_instances_of_tag(
-            "suggestion",
-            input_rule_xml,
-            response_model_rule_rewrite,
-        )
-
-        # replace all instances of <example> tags in `new_rule_xml` with the corresponding <example> tags in `response_model_rule_rewrite`
-        new_rule_xml = replace_all_instances_of_tag(
-            "example",
-            new_rule_xml,
-            response_model_rule_rewrite,
-        )
-        validated_rule_xml = new_rule_xml
-    # post process
-    validated_rule_xml = post_process_xml(validated_rule_xml)
-    return validated_rule_xml, usages
+    return rule_xml, [usage]
