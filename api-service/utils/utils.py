@@ -30,6 +30,7 @@ from utils.rule_rewrite_prompt import (
     get_dynamic_standard_prompt,
     format_optimized_standard_prompt,
 )
+from utils.dynamic_rule_checking import check_rule_modification
 
 pricing = json.load(open("pricing.json"))
 utils_logger = setup_logger(__name__)
@@ -525,10 +526,12 @@ XML Rule:"""
     messages = generate_simple_message(
         system_prompt=NEW_CREATE_RULE_FROM_ADHOC_SYSTEM_PROMPT, user_prompt=user_text
     )
+    usages = []
 
     response, usage = call_gpt_with_backoff(
         messages=messages, model="gpt-4-1106-preview", temperature=0, max_length=1480
     )
+    usages.append(usage)
 
     # post processing
     cleaned_response = remove_thought_tags(response)
@@ -541,11 +544,13 @@ XML Rule:"""
         system_prompt=validaton_prompt,
         user_prompt=cleaned_response,
     )
-    response, usage = call_gpt_with_backoff(
+    cleaned_response, usage = call_gpt_with_backoff(
         messages=messages, model="gpt-4-1106-preview", temperature=0, max_length=1480
     )
-    # TODO: call example validation function
-    return cleaned_response.strip(), usage
+    usages.append(usage)
+    cleaned_response, _usages = check_rule_modification(cleaned_response)
+    usages.extend(_usages)
+    return cleaned_response.strip(), combine_all_usages(usages)
 
 
 def extract_suggestion_words(input_string: str) -> List[str]:
