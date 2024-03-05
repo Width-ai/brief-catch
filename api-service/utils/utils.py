@@ -26,10 +26,7 @@ from domain.modifier_prompts.common_instructions import (
 )
 from utils.logger import setup_logger
 from utils.regexp_validation import post_process_xml
-from utils.rule_rewrite_prompt import (
-    get_dynamic_standard_prompt,
-    format_optimized_standard_prompt,
-)
+from utils.rule_rewrite_prompt import get_dynamic_standard_prompt
 from utils.dynamic_rule_checking import check_rule_modification
 
 pricing = json.load(open("pricing.json"))
