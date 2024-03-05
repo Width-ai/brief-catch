@@ -26,7 +26,10 @@ from domain.modifier_prompts.common_instructions import (
 )
 from utils.logger import setup_logger
 from utils.regexp_validation import post_process_xml
-from utils.rule_rewrite_prompt import get_dynamic_standard_prompt
+from utils.rule_rewrite_prompt import (
+    get_dynamic_standard_prompt,
+    format_optimized_standard_prompt,
+)
 
 pricing = json.load(open("pricing.json"))
 utils_logger = setup_logger(__name__)
@@ -488,7 +491,7 @@ def message_html_to_markdown(xml_rule: str) -> str:
     xml_rule = xml_rule.replace("<linebreak/><linebreak/>", "|")
     xml_rule = xml_rule.replace("<linebreak/>", "|")
 
-    return xml_rule    
+    return xml_rule
 
 
 def create_rule_helper(
@@ -526,12 +529,21 @@ XML Rule:"""
     response, usage = call_gpt_with_backoff(
         messages=messages, model="gpt-4-1106-preview", temperature=0, max_length=1480
     )
-    
+
     # post processing
     cleaned_response = remove_thought_tags(response)
     cleaned_response = cleaned_response.replace("```xml", "").replace("```", "")
     cleaned_response = post_process_xml(cleaned_response)
     cleaned_response = message_html_to_markdown(cleaned_response)
+    # rule validation
+    validaton_prompt = format_optimized_standard_prompt()
+    messages = generate_simple_message(
+        system_prompt=validaton_prompt,
+        user_prompt=cleaned_response,
+    )
+    response, usage = call_gpt_with_backoff(
+        messages=messages, model="gpt-4-1106-preview", temperature=0, max_length=1480
+    )
     # TODO: call example validation function
     return cleaned_response.strip(), usage
 
