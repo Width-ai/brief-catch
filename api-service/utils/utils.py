@@ -17,6 +17,7 @@ from domain.prompts import (
     SENTENCE_RANKING_SYSTEM_PROMPT,
     PARENTHESES_REWRITING_PROMPT,
     NEW_CREATE_RULE_FROM_ADHOC_SYSTEM_PROMPT,
+    DYNAMIC_RULE_CHECKING_PROMPT
 )
 from domain.models import RuleToUpdate
 from domain.modifier_prompts import RULE_USER_TEXT_TEMPLATE
@@ -27,7 +28,6 @@ from domain.modifier_prompts.common_instructions import (
 from utils.logger import setup_logger
 from utils.regexp_validation import post_process_xml
 from utils.rule_rewrite_prompt import get_dynamic_standard_prompt
-from utils.dynamic_rule_checking import check_rule_modification
 
 pricing = json.load(open("pricing.json"))
 utils_logger = setup_logger(__name__)
@@ -471,6 +471,9 @@ def remove_thought_tags(input_text: str) -> str:
     thought_pattern = r"<THOUGHT>.*?</THOUGHT>"
     # Use re.sub to replace the pattern with an empty string
     cleaned_text = re.sub(thought_pattern, "", input_text, flags=re.DOTALL)
+    thought_pattern = r"<thought>.*?</thought>"
+    # Use re.sub to replace the pattern with an empty string
+    cleaned_text = re.sub(thought_pattern, "", cleaned_text, flags=re.DOTALL)
     return cleaned_text
 
 
@@ -490,6 +493,24 @@ def message_html_to_markdown(xml_rule: str) -> str:
     xml_rule = xml_rule.replace("<linebreak/>", "|")
 
     return xml_rule
+
+
+def check_rule_modification(rule_xml: str) -> Tuple[str, List[Dict]]:
+    response, usage = call_gpt_with_backoff(
+        model="gpt-4-1106-preview",
+        messages=[
+            {"role": "system", "content": DYNAMIC_RULE_CHECKING_PROMPT},
+            {"role": "user", "content": rule_xml},
+        ],
+        temperature=0,
+        max_length=1500,
+    )
+    response = response.replace("```xml", "")
+    response = response.replace("```", "")
+    response = response.replace("N.*?", "N.*")
+    response = remove_thought_tags(response)
+    rule_xml = re.findall(r"<rule.*?</rule>", response, re.DOTALL)[0]
+    return rule_xml, [usage]
 
 
 def create_rule_helper(

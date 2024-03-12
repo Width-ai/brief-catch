@@ -37,8 +37,8 @@ from utils.utils import (
     fetch_rule_by_id,
     create_df_from_analysis_data,
     combine_all_usages,
+    check_rule_modification,
 )
-from utils.dynamic_rule_checking import check_rule_modification
 from utils.rule_splitting import (
     split_rule_by_or_operands,
     split_broad_rule_with_instructions,
