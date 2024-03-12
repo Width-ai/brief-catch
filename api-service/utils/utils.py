@@ -17,6 +17,7 @@ from domain.prompts import (
     SENTENCE_RANKING_SYSTEM_PROMPT,
     PARENTHESES_REWRITING_PROMPT,
     NEW_CREATE_RULE_FROM_ADHOC_SYSTEM_PROMPT,
+    DYNAMIC_RULE_CHECKING_PROMPT
 )
 from domain.models import RuleToUpdate
 from domain.modifier_prompts import RULE_USER_TEXT_TEMPLATE
@@ -470,6 +471,9 @@ def remove_thought_tags(input_text: str) -> str:
     thought_pattern = r"<THOUGHT>.*?</THOUGHT>"
     # Use re.sub to replace the pattern with an empty string
     cleaned_text = re.sub(thought_pattern, "", input_text, flags=re.DOTALL)
+    thought_pattern = r"<thought>.*?</thought>"
+    # Use re.sub to replace the pattern with an empty string
+    cleaned_text = re.sub(thought_pattern, "", cleaned_text, flags=re.DOTALL)
     return cleaned_text
 
 
@@ -488,7 +492,25 @@ def message_html_to_markdown(xml_rule: str) -> str:
     xml_rule = xml_rule.replace("<linebreak/><linebreak/>", "|")
     xml_rule = xml_rule.replace("<linebreak/>", "|")
 
-    return xml_rule    
+    return xml_rule
+
+
+def check_rule_modification(rule_xml: str) -> Tuple[str, List[Dict]]:
+    response, usage = call_gpt_with_backoff(
+        model="gpt-4-1106-preview",
+        messages=[
+            {"role": "system", "content": DYNAMIC_RULE_CHECKING_PROMPT},
+            {"role": "user", "content": rule_xml},
+        ],
+        temperature=0,
+        max_length=1500,
+    )
+    response = response.replace("```xml", "")
+    response = response.replace("```", "")
+    response = response.replace("N.*?", "N.*")
+    response = remove_thought_tags(response)
+    rule_xml = re.findall(r"<rule.*?</rule>", response, re.DOTALL)[0]
+    return rule_xml, [usage]
 
 
 def create_rule_helper(
@@ -522,18 +544,22 @@ XML Rule:"""
     messages = generate_simple_message(
         system_prompt=NEW_CREATE_RULE_FROM_ADHOC_SYSTEM_PROMPT, user_prompt=user_text
     )
+    usages = []
 
     response, usage = call_gpt_with_backoff(
         messages=messages, model="gpt-4-1106-preview", temperature=0, max_length=1480
     )
-    
+    usages.append(usage)
+
     # post processing
     cleaned_response = remove_thought_tags(response)
     cleaned_response = cleaned_response.replace("```xml", "").replace("```", "")
     cleaned_response = post_process_xml(cleaned_response)
     cleaned_response = message_html_to_markdown(cleaned_response)
-    # TODO: call example validation function
-    return cleaned_response.strip(), usage
+    # rule validation
+    cleaned_response, _usages = check_rule_modification(cleaned_response)
+    usages.extend(_usages)
+    return cleaned_response.strip(), combine_all_usages(usages)
 
 
 def extract_suggestion_words(input_string: str) -> List[str]:

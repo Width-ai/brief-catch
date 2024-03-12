@@ -4,16 +4,7 @@ from utils.dynamic_prompting import get_pos_tag_dicts_from_rule
 from domain.dynamic_prompting.parts_of_speech import POS_MAPS
 
 
-def format_optimized_standard_prompt(
-    replace_antipattern,
-    target_element,
-    replace_pos_tags,
-    replace_pos_tags_fewshot_examples,
-    replace_ct_tag,
-    replace_backslash_number,
-    replace_sent_start,
-    replace_suggestion_and_example,
-):
+def format_optimized_standard_prompt(**kwargs):
     return f"""
     You are a component in a system designed to modify xml content. The user will provide to you an xml content, an element of that xml that should be modified, and a specific modification request. Your job will be to modify the xml content according to the information provided.
 

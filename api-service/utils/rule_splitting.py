@@ -12,9 +12,13 @@ from utils.dynamic_prompting import (
     rule_has_regex,
     POS_MAPS,
 )
-from utils.dynamic_rule_checking import check_rule_modification
 from utils.logger import setup_logger
-from utils.utils import generate_simple_message, call_gpt, combine_all_usages
+from utils.utils import (
+    generate_simple_message,
+    call_gpt,
+    combine_all_usages,
+    check_rule_modification
+)
 
 
 splitter_logger = setup_logger(__name__)
