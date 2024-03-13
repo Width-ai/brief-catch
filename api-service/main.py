@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import StringIO, BytesIO
 from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import JSONResponse, StreamingResponse
-from typing import List, Dict
+from typing import List, Dict, Tuple
 from domain.prompts import TOPIC_SENTENCE_SYSTEM_PROMPT, QUOTATION_SYSTEM_PROMPT
 from domain.models import (
     InputData,
@@ -593,6 +593,24 @@ async def ngram_analysis(input_data: InputData) -> JSONResponse:
     )
 
 
+
+def process_ngram_record(record: Dict, rule_number_key: str) -> Tuple:
+    try:
+        # Perform the given operations and create the result dictionary
+        result = {
+            "rule_number": record[rule_number_key],
+            "correction_analysis": ngram_helper_suggestion(record.get("//Rule"), record.get("//Correction")),
+            "rule_analysis": ngram_helper_rule(record.get("//Rule")),
+        }
+        return ('response', result)
+
+    except Exception as e:
+        error_message = f"Error performing ngram analysis: {e}"
+        logger.error(error_message)
+        logger.exception(e)
+        return ('error', error_message)
+
+
 @app.post("/bulk-ngram-analysis")
 async def bulk_ngram_analysis(csv_file: UploadFile = File(...)) -> JSONResponse:
     """
@@ -617,22 +635,16 @@ async def bulk_ngram_analysis(csv_file: UploadFile = File(...)) -> JSONResponse:
     errors = []
     records = df.to_dict(orient="records")
     rule_number_key = [key for key in records[0] if "number" in key.lower()][0]
-    for record in records:
-        try:
-            responses.append(
-                {
-                    "rule_number": record[rule_number_key],
-                    "correction_analysis": ngram_helper_suggestion(
-                        record.get("//Rule"), record.get("//Correction")
-                    ),
-                    "rule_analysis": ngram_helper_rule(record.get("//Rule")),
-                }
-            )
-        except Exception as e:
-            error_message = f"Error performing ngram analysis: {e}"
-            errors.append(error_message)
-            logger.error(error_message)
-            logger.exception(e)
+
+    with ThreadPoolExecutor() as executor:
+        future_to_record = {executor.submit(process_ngram_record, record, rule_number_key): record for record in records}
+        # retrieve results as they are completed
+        for future in as_completed(future_to_record):
+            result_type, result = future.result()
+            if result_type == 'response':
+                responses.append(result)
+            elif result_type == 'error':
+                errors.append(result)
 
     status_code = 200 if responses else 500
     return JSONResponse(

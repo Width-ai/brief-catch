@@ -469,7 +469,8 @@ def _process_match(rule: str, tokens_to_check: List[Dict], optional_tokens: List
 
         # Check if the token is not required or if .*? wildcard is used and prefix matches
         wildcard_or_optional = (not token_being_checked["required"] or
-                                (".*?" in token_being_checked["pos"] and current_pos_tag.startswith(token_being_checked["pos"][:-3])))
+                                (".*?" in token_being_checked["pos"] and current_pos_tag.startswith(token_being_checked["pos"][:-3])) or
+                                (".*" in token_being_checked["pos"] and current_pos_tag.startswith(token_being_checked["pos"][:-2])))
 
         # If neither condition is satisfied, set flag to False and break
         if not (pos_tags_match or wildcard_or_optional):
