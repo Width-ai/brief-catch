@@ -464,16 +464,16 @@ def update_rule_helper(rules_to_update: List[RuleToUpdate]) -> str:
         return None
 
 
-def remove_thought_tags(input_text: str) -> str:
+def remove_thought_tags(text: str) -> str:
     """
-    Removes any text between the thought tags. removes the tags too
+    Remove the thought tags from a string
     """
-    thought_pattern = r"<THOUGHT>.*?</THOUGHT>"
-    # Use re.sub to replace the pattern with an empty string
-    cleaned_text = re.sub(thought_pattern, "", input_text, flags=re.DOTALL)
-    thought_pattern = r"<thought>.*?</thought>"
-    # Use re.sub to replace the pattern with an empty string
-    cleaned_text = re.sub(thought_pattern, "", cleaned_text, flags=re.DOTALL)
+    # This pattern handles tags that span multiple lines and ignores case
+    thought_pattern = re.compile(r"<thought>.*?</thought>", re.DOTALL | re.IGNORECASE)
+
+    # Substitute occurrences of the pattern with an empty string to remove them
+    cleaned_text = re.sub(thought_pattern, "", text)
+
     return cleaned_text
 
 
@@ -503,13 +503,15 @@ def check_rule_modification(rule_xml: str) -> Tuple[str, List[Dict]]:
             {"role": "user", "content": rule_xml},
         ],
         temperature=0,
-        max_length=1650,
+        max_length=1500,
     )
     response = response.replace("```xml", "")
     response = response.replace("```", "")
     response = response.replace("N.*?", "N.*")
     response = remove_thought_tags(response)
-    rule_xml = re.findall(r"<rule.*?</rule>", response, re.DOTALL)[0]
+    new_rule_xml = re.findall(r"<rule.*?</rule>", response, re.DOTALL)
+    if new_rule_xml:
+        rule_xml = new_rule_xml[0]
     return rule_xml, [usage]
 
 
@@ -590,19 +592,6 @@ def extract_json_tags(input_text: str) -> str:
     new_str = re.sub(pattern, "", input_text, count=1)
     new_str = new_str.replace("</JSON>", "")
     return new_str
-
-
-def remove_thought_tags(text: str) -> str:
-    """
-    Remove the thought tags from a string
-    """
-    # This pattern handles tags that span multiple lines and ignores case
-    thought_pattern = re.compile(r"<thought>.*?</thought>", re.DOTALL | re.IGNORECASE)
-
-    # Substitute occurrences of the pattern with an empty string to remove them
-    cleaned_text = re.sub(thought_pattern, "", text)
-
-    return cleaned_text
 
 
 def clean_json_output(raw_output: str) -> Dict:
