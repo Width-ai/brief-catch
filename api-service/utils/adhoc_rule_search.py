@@ -771,7 +771,7 @@ def ngram_helper_suggestion(rule_pattern: str, suggestion_pattern: str) -> Dict:
                     flags.append(suggestion_patterns[index].strip())
         
         # drop any record not in the top n (default is 50)
-        ngram_data = truncate_ngram_dataset(ngram_data)
+        ngram_data = truncate_ngram_dataset(ngram_data, top_n=75)
         
         if ngram_data:
             # segment the results into groups with similar patterns

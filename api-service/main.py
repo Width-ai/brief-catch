@@ -384,6 +384,7 @@ async def create_rule(input_data: CreateRuleInput) -> JSONResponse:
     """
     Create a rule based on given input, returns the new rule and the usage
     """
+    all_usages = []
     try:
         response, usage = create_rule_helper(
             ad_hoc_syntax=input_data.ad_hoc_syntax,
@@ -394,15 +395,73 @@ async def create_rule(input_data: CreateRuleInput) -> JSONResponse:
             test_sentence=input_data.test_sentence,
             test_sentence_correction=input_data.test_sentence_correction,
         )
+        all_usages.append(usage)
         new_id = "".join(str(random.randint(0, 9)) for _ in range(40))
         response = response.replace("{new_rule_id}", f"BRIEFCATCH_{new_id}")
-        response, usages = check_rule_modification(response)
-        all_usages = [usage] + usages
+
+        if "<or>" in response:
+            logger.info(f"splitting on <or> {input_data.rule_number}...")
+            new_rules, split_usage = split_rule_by_or_operands(input_rule=response)
+            all_usages.append(split_usage)
+            validated_rules = []
+            for new_rule in new_rules:
+                checked_rule, check_usages = check_rule_modification(new_rule)
+                validated_rules.append(checked_rule)
+                all_usages.extend(check_usages)
+            response = "\n".join(validated_rules)
+        else:
+            response, check_usages = check_rule_modification(response)
+            all_usages.extend(check_usages)
+                
         combined_usage = combine_all_usages(all_usages)
         return JSONResponse(content={"response": response, "usage": combined_usage})
     except Exception as e:
         logger.error(e)
         return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
+def process_rule_creation(record: Dict) -> Dict:
+    """
+    Helper function to process rule modification in parallel
+    """
+    all_usages = []
+    try:
+        response, usage = create_rule_helper(
+            ad_hoc_syntax=record.get("ad_hoc_syntax"),
+            rule_number=record.get("rule_number"),
+            correction=record.get("correction"),
+            category=record.get("category"),
+            explanation=record.get("explanation"),
+            test_sentence=record.get("test_sentence"),
+            test_sentence_correction=record.get("test_sentence_correction"),
+        )
+        all_usages.append(usage)
+        new_id = "".join(str(random.randint(0, 9)) for _ in range(40))
+        response = response.replace("{new_rule_id}", f"BRIEFCATCH_{new_id}")
+
+        if "<or>" in response:
+            logger.info(f"splitting on <or> {record.get('rule_number')}...")
+            new_rules, split_usage = split_rule_by_or_operands(input_rule=response)
+            all_usages.append(split_usage)
+            validated_rules = []
+            for new_rule in new_rules:
+                checked_rule, check_usages = check_rule_modification(new_rule)
+                validated_rules.append(checked_rule)
+                all_usages.extend(check_usages)
+            response = "\n".join(validated_rules)
+        else:
+            response, check_usages = check_rule_modification(response)
+            all_usages.extend(check_usages)
+        
+        new_rule_name = f"BRIEFCATCH_{record.get('category').upper()}_{record.get('rule_number')}"
+        
+        combined_usage = combine_all_usages(all_usages)
+        return {"rule_name": new_rule_name, "rule": response, "usage": combined_usage}
+    except Exception as e:
+        error_message = f"Error creating new rule: {e}"
+        logger.error(error_message)
+        logger.exception(e)
+        return {"error": error_message}
 
 
 @app.post("/bulk-rule-creation")
@@ -414,10 +473,9 @@ async def bulk_rule_creation(csv_file: UploadFile = File(...)) -> JSONResponse:
         # Read the CSV file into a pandas DataFrame
         csv_string = StringIO((await csv_file.read()).decode())
         df = pd.read_csv(csv_string)
-        df.dropna(inplace=True)
     except Exception as e:
         logger.error(e)
-        return JSONResponse(status_code=500, content=f"Error reading CSV {str(e)}")
+        return JSONResponse(status_code=500, content={"errors": f"Error reading CSV {str(e)}"})
 
     expected_columns = [
         "ad_hoc_syntax",
@@ -439,35 +497,23 @@ async def bulk_rule_creation(csv_file: UploadFile = File(...)) -> JSONResponse:
     ):
         return JSONResponse(
             status_code=500,
-            content=f"Columns missing {' or '.join(expected_columns)}, current dataset has columns: {df.columns}",
+            content={"errors": f"Columns missing {' or '.join(expected_columns)}, current dataset has columns: {df.columns}"},
         )
 
     responses = []
     errors = []
-    for record in df.to_dict(orient="records"):
-        logger.info(f"{record=}")
-        try:
-            response, usage = create_rule_helper(
-                ad_hoc_syntax=record.get("ad_hoc_syntax"),
-                rule_number=record.get("rule_number"),
-                correction=record.get("correction"),
-                category=record.get("category"),
-                explanation=record.get("explanation"),
-                test_sentence=record.get("test_sentence"),
-                test_sentence_correction=record.get("test_sentence_correction"),
-            )
-            new_id = "".join(str(random.randint(0, 9)) for _ in range(40))
-            response = response.replace("{new_rule_id}", f"BRIEFCATCH_{new_id}")
-            new_rule_name = f"BRIEFCATCH_{record.get('category').upper()}_{record.get('rule_number')}"
-            new_rule_name, usages = check_rule_modification(new_rule_name)
-            responses.append(
-                {"rule_name": new_rule_name, "rule": response, "usage": usage}
-            )
-        except Exception as e:
-            error_message = f"Error creating new rule: {e}"
-            logger.error(error_message)
-            logger.exception(e)
-            errors.append(error_message)
+    records = df.to_dict(orient="records")
+
+    with ThreadPoolExecutor() as executor:
+        future_to_record = {executor.submit(process_rule_creation, record): record for record in records}
+        for future in as_completed(future_to_record):
+            result = future.result()
+            if "error" in result:
+                errors.append(result["error"])
+            else:
+                responses.append(result)
+            # record = future_to_record[future]
+            # logger.info(f"Processed {record=}")
 
     status_code = 200 if responses else 500
     return JSONResponse(

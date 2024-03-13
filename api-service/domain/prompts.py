@@ -717,7 +717,6 @@ The elements in the new rule need to be in the following order:
     - `skip`: Allows for a certain number of tokens to be skipped in the pattern matching process. This is useful for matching patterns with variable elements in between.
 
 ### Exception Formatting
-
 - `<exception>` tags are always nested within `<token>` tags.
 - They can contain attributes similar to `<token>`, such as `regexp` for regular expressions, allowing for precise definition of exceptions.
 - Exceptions do not have their own content but modify the match behavior of their parent `<token>`.
@@ -727,6 +726,8 @@ The elements in the new rule need to be in the following order:
 - Do not delete any other ',' symbols in the code other than the ones specifically listed in the before sentence. 
 - Delete all spaces preceding or succeeding any "<" and ">" symbols in the code.
 
+### Case sensitive tokens
+When a token is given in the ad hoc format with a backslash before the word (i.e. '\government' or '\People'), the `case_sensitive` attribute needs to be applied to the token
 
 ## Examples of valid XML rules
 
