@@ -503,7 +503,7 @@ def check_rule_modification(rule_xml: str) -> Tuple[str, List[Dict]]:
             {"role": "user", "content": rule_xml},
         ],
         temperature=0,
-        max_length=1500,
+        max_length=1650,
     )
     response = response.replace("```xml", "")
     response = response.replace("```", "")

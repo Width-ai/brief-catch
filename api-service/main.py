@@ -244,6 +244,7 @@ def rule_rewriting(input_data: RuleInputData) -> JSONResponse:
 
 def process_modifications(rule_id: str, modifications: pd.DataFrame) -> Dict:
     logger.info(f"Processing {rule_id=} with modifications: {modifications=}")
+    all_usages = []
     try:
         original_rule_text, original_rule_name = fetch_rule_by_id(rule_id)
         modified_rule_text = original_rule_text
@@ -256,14 +257,22 @@ def process_modifications(rule_id: str, modifications: pd.DataFrame) -> Dict:
                     element_action=modification["action to take"],
                     specific_actions=modification["specific actions"],
                 )
+                all_usages.append(usage)
 
             modified_rule_text = modified_rule_text.replace("```xml\n", "").replace("\n```", "")
             modified_rule_text, usages = check_rule_modification(modified_rule_text)
+            all_usages.extend(usages)
+            if "<or>" in modified_rule_text:
+                logger.info(f"Splitting rule {rule_id} on <or> tag...")
+                split_rules, split_usages = split_rule_by_or_operands(modified_rule_text)
+                modified_rule_text = "\n".join(split_rules)
+                all_usages.append(split_usages)
+            combined_usage = combine_all_usages(all_usages)
             return {
                 "original_rule_id": rule_id,
                 "original_rule_name": original_rule_name,
                 "response": modified_rule_text,
-                "usage": usage,
+                "usage": combined_usage,
             }
         else:
             logger.error(f"No rule found for id {rule_id}")
